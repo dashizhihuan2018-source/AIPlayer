@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="480" viewBox="0 0 1280 480">
+  <defs>
+    <linearGradient id="sky" x2="1" y2="1"><stop stop-color="#172b41"/><stop offset=".6" stop-color="#3a5366"/><stop offset="1" stop-color="#d1a568"/></linearGradient>
+    <linearGradient id="beam"><stop stop-color="#ffe4a6" stop-opacity="0"/><stop offset="1" stop-color="#ffe4a6" stop-opacity=".32"/></linearGradient>
+    <linearGradient id="mount" x2="0" y2="1"><stop stop-color="#354b5c"/><stop offset="1" stop-color="#101d2b"/></linearGradient>
+  </defs>
+  <path fill="url(#sky)" d="M0 0h1280v480H0z"/>
+  <circle cx="1018" cy="148" r="70" fill="#ffe1a2"/>
+  <path fill="#76939a" opacity=".45" d="m450 360 250-233 143 155 115-115 322 216v97H450z"/>
+  <path fill="url(#mount)" d="m300 480 359-214 148 106 155-118 318 180v46z"/>
+  <path fill="#102330" d="m630 480 180-91 115 41 140-68 215 78v40z"/>
+  <path fill="url(#beam)" d="M0 210 1190 40v400L0 260z"/>
+  <g transform="translate(1000 294) rotate(-12)" fill="none" stroke="#ffe9b8" opacity=".8">
+    <rect width="140" height="94" rx="8" stroke-width="3"/>
+    <path d="M0 20h140M0 74h140M20 0v20m25-20v20M70 0v20M95 0v20m25-20v20M20 74v20m25-20v20M70 74v20M95 74v20m25-20v20" stroke-width="3"/>
+    <path fill="#ffe9b8" stroke="none" d="m57 32 30 16-30 16z"/>
+  </g>
+</svg>

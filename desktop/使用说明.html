@@ -1,0 +1,9 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>万能AI播放器 使用说明</title>
+<style>body{max-width:760px;margin:60px auto;padding:0 24px;font:17px/1.9 -apple-system,sans-serif;color:#d6dce8;background:#10141d}h1,h2{color:white}a{color:#62b4ff}code{font-size:14px}</style>
+<h1>万能AI播放器</h1><p>V1.0.0 · 基于 LibreTV 2.16.12 · 非官方原生发行。AI为产品名称，本版本尚未接入AI服务。</p>
+<h2>开始使用</h2><p>双击应用即可打开，无需 Docker、终端或预装 Node。关闭窗口或按 ⌘Q 退出时，本地服务会随之关闭。界面、设置和观看记录保存在本机；搜索与在线视频仍需联网。</p>
+<h2>直接搜索观看</h2><p>应用已自动填写原项目历史内置清单的22个真实公开点播接口，首次出现时自动启用，无需手填。清单来源为LibreSpark/LibreTV固定提交0d991bcc23d8e978bab2af13bb130ba3352642d4的js/config.js，不包含example.com测试占位；最新上游本身不再内置源。可以直接搜索片名，选择结果后播放；也可以在「设置 → 源管理」停用接口或添加你有权使用的源。应用不会反复勾回你主动停用的接口。外部源可能失效，并非首页每张海报都有对应片源；本项目不保证第三方内容的授权，请仅观看你有权访问的内容。</p><p>请勿填写账号、密码或私人订阅后再使用「发布为链接」；该上游功能会向第三方公开上传源列表。</p>
+<h2>测试与直接播放</h2><p>菜单「帮助 → 播放测试影片」可播放 Apple 官方 HLS 测试流，用于检查画面、声音及网络。它不是影视内容库。「帮助 → 打开视频链接」可直接播放有权使用的 HLS / MP4 链接。</p>
+<h2>本地数据与隐私</h2><p>服务仅绑定 <code>127.0.0.1:18784</code>，不向局域网提供访问。应用首次启动会创建本机随机访问凭证，不要求你输入站点密码。WKWebView 本机存储保留历史、收藏和设置；删除 App 不会自动清除这些数据。</p><p>配置：<code>~/Library/Application Support/LibreTV Desktop/</code><br>日志：<code>~/Library/Logs/LibreTV Desktop/</code></p><p>首页推荐、封面、搜索与视频会访问对应外部服务。不要把它当作完全离线或零外联应用。没有添加追踪、自动更新或云端上传。使用上游「发布为链接」功能属于主动公开发布，请谨慎操作。</p>
+<h2>遇到问题</h2><p>菜单「帮助 → 打开日志文件夹」查看本机服务日志；「保存诊断快照」保存当前页面截图与播放器状态到日志文件夹，仅本地写入。截图可能包含正在看的内容，请按私人文件保管。端口被其他程序占用时，App 会提示错误，不会强行关闭其他程序。</p>
+<h2>开源与版权</h2><p><a href="https://github.com/LibreSpark/LibreTV">上游 LibreSpark/LibreTV</a> · AGPL-3.0-or-later。上游 commit：<code>a24ad336a3f7c8a16ca93d1f1198e08ac6b7e943</code>。桌面壳源代码及上游修改版位于 App 的 <code>Contents/Resources/Source.tar.gz</code>。内置 Node 的版权与许可证见同目录 <code>Node-LICENSE</code>。</p></html>

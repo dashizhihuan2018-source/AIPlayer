@@ -1,0 +1,21 @@
+/* The video is the window. No catalogue grid or persistent episode sidebar. */
+.watch-immersive-page { position: fixed; inset: 0; overflow: hidden; background: #080808; color: #eee; }
+.watch-immersive-page > main { position: absolute; inset: 0; }
+.watch-immersive-page .desktop-player-workspace { min-height: 100%; }
+.watch-context-actions { position: absolute; z-index: 70; top: 10px; right: 16px; display: flex; gap: 6px; opacity: 0; transition: opacity .15s; }
+.watch-immersive-page:hover .watch-context-actions,
+.watch-immersive-page:focus-within .watch-context-actions { opacity: 1; }
+.watch-context-actions button { padding: 5px 9px; border-radius: 5px; font-size: 11px; color: #ddd; background: rgb(25 25 25 / .72); border: 1px solid rgb(255 255 255 / .12); }
+.watch-context-actions button:disabled { opacity: .35; }
+.watch-context-actions button:focus-visible { outline: 2px solid #ffcb39; outline-offset: 2px; }
+.watch-browser-stage { position: absolute; inset: 0; background: #000; }
+.watch-browser-stage > div { height: 100%; width: 100%; }
+.watch-browser-stage .art-video-player { --art-theme: #ffcb39 !important; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.watch-browser-stage .art-video { object-fit: contain; }
+.watch-browser-stage .art-bottom { padding: 0 14px 4px; background: rgb(35 35 35 / .58); backdrop-filter: blur(18px); }
+.watch-browser-stage .art-progress { margin: 0 -14px; }
+.watch-browser-stage .art-controls { min-height: 40px; }
+.watch-browser-stage .art-bottom .art-progress-played { background: #ffcb39 !important; }
+.watch-browser-stage .art-bottom .art-progress-indicator { background: white; }
+html.aiplayer-native-video-active .watch-immersive-page { background: transparent; }
+@media (prefers-reduced-motion: reduce) { .watch-context-actions { transition: none; } }
