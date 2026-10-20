@@ -14,7 +14,7 @@
     "artifactName": "AIPlayer-V1.1.0-win-preview1-x64.${ext}",
     "directories": {"output": "release"},
     "files": ["*.cjs", "sources.json", "package.json", "WINDOWS-STATUS.md"],
-    "extraResources": [{"from": "server", "to": "server", "filter":["**/*","node_modules/**/*"]}, {"from": "../LICENSE", "to": "LICENSE-AGPL.txt"}, {"from": "../NOTICE.md", "to": "NOTICE.md"}],
+    "extraResources": [{"from": "server", "to": "server"}, {"from": "server/node_modules", "to": "server/node_modules"}, {"from": "../LICENSE", "to": "LICENSE-AGPL.txt"}, {"from": "../NOTICE.md", "to": "NOTICE.md"}],
     "win": {"target": ["nsis", "zip"], "icon": "../upstream/public/icons/icon-512.png", "signExecutable": false},
     "nsis": {"oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false, "runAfterFinish": false}
   }

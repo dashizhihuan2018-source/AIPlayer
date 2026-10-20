@@ -45,7 +45,10 @@ jobs:
         run: npm test
       - name: Prepare original UI resources
         working-directory: windows
-        run: npm run prepare-server
+        run: |
+          npm run prepare-server
+          if ($LASTEXITCODE) { throw 'Production server preparation failed' }
+          if (-not (Test-Path 'server/node_modules/next/package.json')) { throw 'Source Next closure missing before packaging' }
       - name: Build x64 installer and portable archive
         working-directory: windows
         run: npm run package
