@@ -46,7 +46,7 @@ jobs:
       - name: Verify pinned user-download extraction before packaging
         working-directory: windows
         run: |
-          node -e "const r=require('./runtime.cjs');const p=require('node:path');r.ensure(p.join(process.env.RUNNER_TEMP,'aiplayer-runtime-preflight'),async()=>true).then(async b=>{await r.run(b.ffmpeg,['-version']);await r.run(b.mpv,['--version']);console.log('Pinned runtime extraction and executable startup passed')}).catch(e=>{console.error(e);process.exit(1)})"
+          node -e "const r=require('./runtime.cjs');const p=require('node:path');r.ensure(p.join(process.env.RUNNER_TEMP,'aiplayer-runtime-preflight'),async()=>true,{loaderDirectory:p.dirname(require('electron'))}).then(async b=>{await r.run(b.ffmpeg,['-version']);await r.run(b.mpv,['--version']);console.log('Pinned runtime extraction and executable startup passed')}).catch(e=>{console.error(e);process.exit(1)})"
       - name: Prepare original UI resources
         working-directory: windows
         run: |

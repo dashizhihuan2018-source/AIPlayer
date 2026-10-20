@@ -81,7 +81,26 @@ async function downloadVerified(url, sha256) {
     throw Error("运行时校验失败，拒绝运行");
   return bytes;
 }
-async function ensure(root, consent) {
+async function sharedLoader(binaries, directory) {
+  // Reuse the audited loader already included in Electron 44.9.0 Windows x64.
+  // No GPU driver installation or global PATH/system-directory mutation.
+  const source = path.join(directory, "vulkan-1.dll");
+  const data = await fs.readFile(source);
+  const expected =
+    "03120814ccb06e0fa9141cfa7c2ec906984f32ef56f8caf50e56e97a7a3225fa";
+  if (crypto.createHash("sha256").update(data).digest("hex") !== expected)
+    throw Error("随包Vulkan加载库与固定Electron版本不符，拒绝运行引擎");
+  for (const binary of Object.values(binaries)) {
+    const destination = path.join(path.dirname(binary), "vulkan-1.dll");
+    const existing = await fs.readFile(destination).catch(() => null);
+    if (
+      !existing ||
+      crypto.createHash("sha256").update(existing).digest("hex") !== expected
+    )
+      await fs.writeFile(destination, data);
+  }
+}
+async function ensure(root, consent, options = {}) {
   if (process.platform !== "win32") {
     if (!process.env.MPV_BINARY || !process.env.FFMPEG_BINARY)
       throw Error("测试需要显式提供本机 MPV_BINARY/FFMPEG_BINARY");
@@ -93,7 +112,12 @@ async function ensure(root, consent) {
     binaries[id] = await find(path.join(root, id), name).catch(() => null);
     if (!binaries[id]) missing = true;
   }
-  if (!missing) return binaries;
+  const loaderDirectory =
+    options.loaderDirectory || path.dirname(process.execPath);
+  if (!missing) {
+    await sharedLoader(binaries, loaderDirectory);
+    return binaries;
+  }
   if (!(await consent()))
     throw Error("播放引擎尚未安装；可下次打开本地文件时安装");
   await fs.mkdir(root, { recursive: true });
@@ -156,6 +180,7 @@ async function ensure(root, consent) {
       throw e;
     }
   }
+  await sharedLoader(binaries, loaderDirectory);
   return binaries;
 }
 module.exports = { run, ensure, releases, extractor };
