@@ -11,10 +11,10 @@ const {
 const fs = require("node:fs/promises"),
   path = require("node:path"),
   os = require("node:os"),
-  net = require("node:net"),
   crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const { MPV } = require("./mpv.cjs"),
+  { persistentPort } = require("./port.cjs"),
   policy = require("./policy.cjs"),
   runtime = require("./runtime.cjs");
 const smoke = process.argv.includes("--smoke-test");
@@ -479,21 +479,11 @@ async function request(m) {
 function localFilesHasPath(file) {
   return [...localFiles.values()].includes(file);
 }
-async function freePort() {
-  return new Promise((resolve, reject) => {
-    const s = net.createServer();
-    s.on("error", reject);
-    s.listen(0, "127.0.0.1", () => {
-      const p = s.address().port;
-      s.close(() => resolve(p));
-    });
-  });
-}
 async function startServer() {
   const root = app.isPackaged
     ? path.join(process.resourcesPath, "server")
     : path.join(__dirname, "server");
-  const port = await freePort(),
+  const port = await persistentPort(app.getPath("userData")),
     password = policy.token();
   base = "http://127.0.0.1:" + port;
   const sources = JSON.parse(
