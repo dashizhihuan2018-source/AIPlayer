@@ -1,2 +1,43 @@
-const fs=require('node:fs/promises'),path=require('node:path');
-(async()=>{const root=path.resolve(__dirname,'../upstream');await fs.rm(path.join(__dirname,'server'),{recursive:true,force:true});await fs.cp(path.join(root,'.next/standalone'),path.join(__dirname,'server'),{recursive:true,dereference:true});await fs.cp(path.join(root,'.next/static'),path.join(__dirname,'server/.next/static'),{recursive:true,dereference:true});await fs.cp(path.join(root,'public'),path.join(__dirname,'server/public'),{recursive:true,dereference:true});const policy=await fs.readFile(path.join(__dirname,'../desktop/Policy.swift'),'utf8');const found=policy.match(/static let defaultSources = #"""\s*([\s\S]*?)\s*"""#/);if(!found)throw Error('Missing original source list');const sources=JSON.parse(found[1]);if(sources.length!==22)throw Error('Source list changed; review baseline');await fs.writeFile(path.join(__dirname,'sources.json'),JSON.stringify(sources));})().catch(e=>{console.error(e);process.exit(1);});
+const fs = require("node:fs/promises"),
+  path = require("node:path");
+(async () => {
+  const root = path.resolve(__dirname, "../upstream");
+  await fs.rm(path.join(__dirname, "server"), { recursive: true, force: true });
+  await fs.cp(
+    path.join(root, ".next/standalone"),
+    path.join(__dirname, "server"),
+    { recursive: true, dereference: true },
+  );
+  await fs.cp(
+    path.join(root, ".next/static"),
+    path.join(__dirname, "server/.next/static"),
+    { recursive: true, dereference: true },
+  );
+  await fs.cp(
+    path.join(root, "public"),
+    path.join(__dirname, "server/public"),
+    { recursive: true, dereference: true },
+  );
+  // Windows NFT tracing may omit runtime Next modules; install the exact locked
+  // production closure into this disposable server copy, never into the Mac tree.
+  for (const name of ["package.json", "package-lock.json"])
+    await fs.copyFile(path.join(root,name),path.join(__dirname,"server",name));
+  const policy = await fs.readFile(
+    path.join(__dirname, "../desktop/Policy.swift"),
+    "utf8",
+  );
+  const found = policy.match(
+    /static let defaultSources = #"""\s*([\s\S]*?)\s*"""#/,
+  );
+  if (!found) throw Error("Missing original source list");
+  const sources = JSON.parse(found[1]);
+  if (sources.length !== 22)
+    throw Error("Source list changed; review baseline");
+  await fs.writeFile(
+    path.join(__dirname, "sources.json"),
+    JSON.stringify(sources),
+  );
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

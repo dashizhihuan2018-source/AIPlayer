@@ -6,7 +6,7 @@
   "author": "Nankong",
   "license": "AGPL-3.0-or-later",
   "main": "main.cjs",
-  "scripts": {"start": "electron .", "test": "node --test test/*.test.cjs", "prepare-server": "node prepare.cjs", "package": "electron-builder --win nsis zip --x64 --publish never"},
+  "scripts": {"start": "electron .", "test": "node --test test/*.test.cjs", "prepare-server": "node prepare.cjs && npm ci --prefix server --omit=dev --ignore-scripts --no-audit --no-fund", "package": "electron-builder --win nsis zip --x64 --publish never"},
   "devDependencies": {"electron": "44.9.0", "electron-builder": "26.15.3"},
   "build": {
     "appId": "cn.nankong.aiplayer.windows",
@@ -14,8 +14,8 @@
     "artifactName": "AIPlayer-V1.1.0-win-preview1-x64.${ext}",
     "directories": {"output": "release"},
     "files": ["*.cjs", "sources.json", "package.json", "WINDOWS-STATUS.md"],
-    "extraResources": [{"from": "server", "to": "server"}, {"from": "../LICENSE", "to": "LICENSE-AGPL.txt"}, {"from": "../NOTICE.md", "to": "NOTICE.md"}],
-    "win": {"target": ["nsis", "zip"], "icon": "../upstream/public/icons/icon-512.png", "signAndEditExecutable": false},
+    "extraResources": [{"from": "server", "to": "server", "filter":["**/*","node_modules/**/*"]}, {"from": "../LICENSE", "to": "LICENSE-AGPL.txt"}, {"from": "../NOTICE.md", "to": "NOTICE.md"}],
+    "win": {"target": ["nsis", "zip"], "icon": "../upstream/public/icons/icon-512.png", "signExecutable": false},
     "nsis": {"oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false, "runAfterFinish": false}
   }
 }

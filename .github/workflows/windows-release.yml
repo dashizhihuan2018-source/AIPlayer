@@ -1,0 +1,48 @@
+name: Publish verified Windows preview
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful Windows preview run ID already reviewed
+        required: true
+        type: string
+      expected_sha:
+        description: Exact reviewed build commit SHA
+        required: true
+        type: string
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Validate successful run, download exact artifact and verify hashes
+        shell: pwsh
+        run: |
+          if ($env:REPO -ne 'dashizhihuan2018-source/AIPlayer' -or $env:BUILD_RUN_ID -notmatch '^\d+$' -or $env:EXPECTED_SHA -notmatch '^[a-f0-9]{40}$') { throw 'Invalid publication scope' }
+          $run = gh api "repos/$env:REPO/actions/runs/$env:BUILD_RUN_ID" | ConvertFrom-Json
+          if ($run.conclusion -ne 'success' -or $run.head_sha -ne $env:EXPECTED_SHA -or $run.head_branch -ne 'codex/windows-port' -or $run.path -ne '.github/workflows/windows-preview.yml') { throw 'Unreviewed or failed build' }
+          gh run download $env:BUILD_RUN_ID --repo $env:REPO --name AIPlayer-Windows-x64-preview1 --dir incoming
+          if ($LASTEXITCODE) { throw 'Artifact download failed' }
+          $names = @('AIPlayer-V1.1.0-win-preview1-x64.exe','AIPlayer-V1.1.0-win-preview1-x64.zip')
+          $lines = @(Get-Content 'incoming/release/SHA256SUMS.txt')
+          if ($lines.Count -ne 2) { throw 'Unexpected manifest' }
+          foreach ($line in $lines) {
+            if ($line -notmatch '^([a-f0-9]{64})  (.+)$') { throw 'Invalid manifest entry' }
+            $hash=$Matches[1]; $name=$Matches[2]
+            if ($name -notin $names -or (Get-FileHash (Join-Path 'incoming/release' $name) -Algorithm SHA256).Hash.ToLower() -ne $hash) { throw 'Installer hash mismatch' }
+          }
+          $tag='v1.1.0-win-preview1'
+          gh release view $tag --repo $env:REPO --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw 'Release already exists; do not overwrite' }
+          $notes=(Get-Content 'incoming/WINDOWS-STATUS.md' -Raw)+"`n`nWindows x64 适配预览，非完整Mac功能对等版。首次启动需联网并确认安装播放引擎，不是完整离线包。原Mac安装包保持不变。`n`n自动构建/安装/启动/卸载及真实解码证据：$($run.html_url)`n源码提交：$env:EXPECTED_SHA`n下载exe安装器或zip便携包，并以SHA256SUMS.txt核验。未代码签名，人工GUI、音画同步与跨端对等仍待验收。"
+          $notes | Set-Content -Encoding utf8 'release-notes.md'
+          gh release create $tag --repo $env:REPO --target $env:EXPECTED_SHA --prerelease --title '万能AI播放器 Windows x64 preview1 · 适配预览' --notes-file release-notes.md 'incoming/release/AIPlayer-V1.1.0-win-preview1-x64.exe' 'incoming/release/AIPlayer-V1.1.0-win-preview1-x64.zip' 'incoming/release/SHA256SUMS.txt' 'incoming/WINDOWS-STATUS.md' 'incoming/qa/aiplayer-smoke.json' 'incoming/qa/aiplayer-smoke.png' 'incoming/qa/aiplayer-video-frame.png' 'incoming/qa/installer-smoke.json'
+          if ($LASTEXITCODE) { throw 'Release publication failed; inspect state before retry' }

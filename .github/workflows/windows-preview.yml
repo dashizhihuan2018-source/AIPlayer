@@ -49,15 +49,29 @@ jobs:
       - name: Build x64 installer and portable archive
         working-directory: windows
         run: npm run package
+      - name: Check packaged standalone dependency closure
+        working-directory: windows
+        run: |
+          if (-not (Test-Path 'release/win-unpacked/resources/server/node_modules/next/package.json')) { throw 'Packaged Next runtime missing' }
+          if (-not (Test-Path 'release/win-unpacked/resources/server/.next/server')) { throw 'Packaged server build missing' }
       - name: Start packaged app and decode synthetic video with audio
         working-directory: windows
         run: |
           $env:SMOKE_OUTPUT = Join-Path $pwd 'qa'
           New-Item -ItemType Directory -Force $env:SMOKE_OUTPUT | Out-Null
-          $p = Start-Process -FilePath (Join-Path $pwd 'release/win-unpacked/AIPlayer.exe') -ArgumentList '--smoke-test' -PassThru -RedirectStandardOutput 'qa/stdout.log' -RedirectStandardError 'qa/stderr.log'
+          $install = Join-Path $env:RUNNER_TEMP 'AIPlayer-preview-install'
+          $setup = Start-Process -FilePath (Join-Path $pwd 'release/AIPlayer-V1.1.0-win-preview1-x64.exe') -ArgumentList '/S',("/D=$install") -PassThru
+          if (-not $setup.WaitForExit(120000)) { $setup.Kill(); throw 'Installer timeout' }
+          if ($setup.ExitCode -ne 0 -or -not (Test-Path (Join-Path $install 'AIPlayer.exe'))) { throw 'Silent install failed' }
+          $p = Start-Process -FilePath (Join-Path $install 'AIPlayer.exe') -ArgumentList '--smoke-test' -PassThru -RedirectStandardOutput 'qa/stdout.log' -RedirectStandardError 'qa/stderr.log'
           if (-not $p.WaitForExit(360000)) { $p.Kill(); throw 'Application smoke timeout' }
           if ($p.ExitCode -ne 0) { throw "Application smoke failed: $($p.ExitCode)" }
           if (-not (Test-Path 'qa/aiplayer-smoke.json')) { throw 'Missing real decode evidence' }
+          $uninstaller = Get-ChildItem $install -Filter '*Uninstall*.exe' | Select-Object -First 1
+          if (-not $uninstaller) { throw 'Missing uninstaller' }
+          $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -PassThru
+          if (-not $uninstall.WaitForExit(120000) -or $uninstall.ExitCode -ne 0) { throw 'Silent uninstall failed' }
+          @{status='automated-native-only';os=[Environment]::OSVersion.VersionString;install=$true;startAndDecode=$true;uninstall=$true;humanReview='pending'} | ConvertTo-Json | Set-Content 'qa/installer-smoke.json'
       - name: SHA-256 manifests
         working-directory: windows
         run: |
@@ -77,6 +91,20 @@ jobs:
             windows/qa/aiplayer-smoke.json
             windows/qa/aiplayer-smoke.png
             windows/qa/aiplayer-video-frame.png
+            windows/qa/installer-smoke.json
+            windows/WINDOWS-STATUS.md
+      - name: Small QA evidence for independent review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: AIPlayer-Windows-QA
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            windows/qa/aiplayer-smoke.json
+            windows/qa/aiplayer-smoke.png
+            windows/qa/aiplayer-video-frame.png
+            windows/qa/installer-smoke.json
+            windows/release/SHA256SUMS.txt
             windows/WINDOWS-STATUS.md
       - name: Preserve startup diagnostics even on failure
         if: always()
