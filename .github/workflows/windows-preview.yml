@@ -1,0 +1,80 @@
+name: Windows preview
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/windows-port]
+    paths: ['windows/**', '.github/workflows/windows-preview.yml']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      DOCKER_BUILD: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.14.0'
+          cache: npm
+          cache-dependency-path: |
+            upstream/package-lock.json
+            windows/package-lock.json
+      - name: Original UI locked dependencies
+        working-directory: upstream
+        run: npm ci --no-audit --no-fund
+      - name: Original UI type checks
+        working-directory: upstream
+        run: npm run typecheck
+      - name: Original UI regression tests
+        working-directory: upstream
+        run: npm test -- --maxWorkers=2 --minWorkers=1
+      - name: Build original UI and local service on Windows
+        working-directory: upstream
+        run: npm run build
+      - name: Windows bridge locked dependencies
+        working-directory: windows
+        run: npm ci --no-audit --no-fund
+      - name: Bridge parameter security tests
+        working-directory: windows
+        run: npm test
+      - name: Prepare original UI resources
+        working-directory: windows
+        run: npm run prepare-server
+      - name: Build x64 installer and portable archive
+        working-directory: windows
+        run: npm run package
+      - name: Start packaged app and decode synthetic video with audio
+        working-directory: windows
+        run: |
+          $env:SMOKE_OUTPUT = Join-Path $pwd 'qa'
+          New-Item -ItemType Directory -Force $env:SMOKE_OUTPUT | Out-Null
+          $p = Start-Process -FilePath (Join-Path $pwd 'release/win-unpacked/AIPlayer.exe') -ArgumentList '--smoke-test' -PassThru
+          if (-not $p.WaitForExit(360000)) { $p.Kill(); throw 'Application smoke timeout' }
+          if ($p.ExitCode -ne 0) { throw "Application smoke failed: $($p.ExitCode)" }
+          if (-not (Test-Path 'qa/aiplayer-smoke.json')) { throw 'Missing real decode evidence' }
+      - name: SHA-256 manifests
+        working-directory: windows
+        run: |
+          $names = @('AIPlayer-V1.1.0-win-preview1-x64.exe','AIPlayer-V1.1.0-win-preview1-x64.zip')
+          $lines = foreach ($name in $names) { $p = Join-Path 'release' $name; if ((Get-Item $p).Length -lt 1000000) { throw 'Incomplete package' }; "$((Get-FileHash $p -Algorithm SHA256).Hash.ToLower())  $name" }
+          $lines | Set-Content -Encoding utf8 'release/SHA256SUMS.txt'
+      - name: Save verified candidates, not a parity certification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: AIPlayer-Windows-x64-preview1
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            windows/release/AIPlayer-V1.1.0-win-preview1-x64.exe
+            windows/release/AIPlayer-V1.1.0-win-preview1-x64.zip
+            windows/release/SHA256SUMS.txt
+            windows/qa/aiplayer-smoke.json
+            windows/qa/aiplayer-smoke.png
+            windows/qa/aiplayer-video-frame.png
+            windows/WINDOWS-STATUS.md

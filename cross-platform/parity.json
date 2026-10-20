@@ -1,0 +1,366 @@
+{
+  "schema_version": 1,
+  "version": "V1.1.0-win-preview1",
+  "note": "Frozen source-derived baseline; pending is NOT passed. Compile/smoke evidence does not replace cross-platform/human parity.",
+  "baseline_features": [
+    "home-search",
+    "local-open-queue",
+    "network-media",
+    "decode-avsync",
+    "playback-controls",
+    "tracks-subtitles",
+    "video-controls",
+    "loop-frames",
+    "resume-bookmarks",
+    "screenshot",
+    "gif-capture",
+    "poster",
+    "clip-record",
+    "ocr",
+    "fullscreen-pip",
+    "video-overlays-dpi",
+    "file-drop-associations",
+    "native-shortcuts",
+    "local-service-security",
+    "licenses-runtime",
+    "install-upgrade-uninstall"
+  ],
+  "features": [
+    {
+      "id": "home-search",
+      "description": "原首页/发现/全网搜索及22来源",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "local-open-queue",
+      "description": "本地文件授权、队列和连续播放",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "network-media",
+      "description": "URL/HLS播放和网络错误",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "decode-avsync",
+      "description": "真实视频/音频解码及连续音画同步",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "playback-controls",
+      "description": "暂停、进度、音量、静音和倍速",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "tracks-subtitles",
+      "description": "多音轨、字幕、外部字幕及同步",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "video-controls",
+      "description": "比例、旋转、调色和硬件解码",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "loop-frames",
+      "description": "A-B、循环、章节和逐帧",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "resume-bookmarks",
+      "description": "播放记忆、书签与偏好持久化",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "screenshot",
+      "description": "原生画面截图和自动保存",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "gif-capture",
+      "description": "GIF实时录制、停止、取消、预览和资源上限",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "poster",
+      "description": "时间线海报与自动保存",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "clip-record",
+      "description": "片段录制和自动保存",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "ocr",
+      "description": "媒体画面OCR",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "fullscreen-pip",
+      "description": "窗口全屏和画中画",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "video-overlays-dpi",
+      "description": "视频嵌入、浮层遮挡、多屏与DPI",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "file-drop-associations",
+      "description": "拖放、系统文件关联和单实例",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "native-shortcuts",
+      "description": "菜单、快捷键和关闭窗口",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "local-service-security",
+      "description": "本机服务授权、来源限制与退出清理",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "licenses-runtime",
+      "description": "原许可、引擎来源、首次下载及离线依赖",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    },
+    {
+      "id": "install-upgrade-uninstall",
+      "description": "干净系统安装、升级和卸载保留用户数据",
+      "macos": {
+        "status": "pending",
+        "evidence": []
+      },
+      "windows": {
+        "status": "pending",
+        "evidence": []
+      },
+      "human_review": {
+        "macos": "pending",
+        "windows": "pending"
+      }
+    }
+  ]
+}
