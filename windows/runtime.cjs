@@ -2,6 +2,11 @@ const fs = require("node:fs/promises"),
   path = require("node:path"),
   crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
+const extractor = {
+  url: "https://github.com/ip7z/7zip/releases/download/26.04/7zr.exe",
+  sha256: "256feca8e274e5da655e2a284fabafd9f554365eb164862089dacd4e8276d282",
+  source: "https://github.com/ip7z/7zip/releases/tag/26.04",
+};
 const releases = [
   [
     "mpv",
@@ -65,6 +70,17 @@ async function find(root, name) {
   }
   return null;
 }
+async function downloadVerified(url, sha256) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(180000) });
+  if (!response.ok) throw Error("固定版本运行时下载失败");
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (
+    bytes.length > 100 * 1024 * 1024 ||
+    crypto.createHash("sha256").update(bytes).digest("hex") !== sha256
+  )
+    throw Error("运行时校验失败，拒绝运行");
+  return bytes;
+}
 async function ensure(root, consent) {
   if (process.platform !== "win32") {
     if (!process.env.MPV_BINARY || !process.env.FFMPEG_BINARY)
@@ -81,24 +97,42 @@ async function ensure(root, consent) {
   if (!(await consent()))
     throw Error("播放引擎尚未安装；可下次打开本地文件时安装");
   await fs.mkdir(root, { recursive: true });
+  // Windows Server's built-in tar cannot decode the upstream archives' LZMA.
+  // Direct user download of the pinned standalone 7zr, not an installer or a
+  // system-wide modification. Never executes an unverified cached downloader.
+  const sevenzip = path.join(root, "7zr-26.04.exe");
+  let cached = await fs.readFile(sevenzip).catch(() => null);
+  if (
+    !cached ||
+    crypto.createHash("sha256").update(cached).digest("hex") !==
+      extractor.sha256
+  ) {
+    cached = await downloadVerified(extractor.url, extractor.sha256);
+    await fs.writeFile(sevenzip, cached);
+  }
+  await fs.writeFile(
+    path.join(root, "7ZIP-PROVENANCE.json"),
+    JSON.stringify(
+      {
+        ...extractor,
+        license: "GNU LGPL; see upstream DOC/License.txt",
+        licenseURL: "https://github.com/ip7z/7zip/blob/26.04/DOC/License.txt",
+        redistribution:
+          "Direct user download; not bundled in AIPlayer installer",
+      },
+      null,
+      2,
+    ),
+  );
   for (const [id, url, sha, name] of releases) {
     if (binaries[id]) continue;
     const temp = path.join(root, id + "-" + crypto.randomUUID());
     await fs.mkdir(temp);
     try {
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(180000),
-      });
-      if (!response.ok) throw Error("引擎下载失败");
-      const bytes = Buffer.from(await response.arrayBuffer());
-      if (
-        bytes.length > 100 * 1024 * 1024 ||
-        crypto.createHash("sha256").update(bytes).digest("hex") !== sha
-      )
-        throw Error("引擎校验失败，拒绝运行");
+      const bytes = await downloadVerified(url, sha);
       const archive = path.join(temp, "runtime.7z");
       await fs.writeFile(archive, bytes);
-      await run("tar.exe", ["-xf", archive, "-C", temp]);
+      await run(sevenzip, ["x", archive, "-o" + temp, "-y", "-bso0", "-bsp0"]);
       await fs.unlink(archive);
       if (!(await find(temp, name))) throw Error("引擎缺少可执行文件");
       await fs.writeFile(
@@ -124,4 +158,4 @@ async function ensure(root, consent) {
   }
   return binaries;
 }
-module.exports = { run, ensure, releases };
+module.exports = { run, ensure, releases, extractor };

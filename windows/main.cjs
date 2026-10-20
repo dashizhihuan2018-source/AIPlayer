@@ -125,7 +125,7 @@ async function initEngine() {
           type: "question",
           message: "安装 Windows 播放引擎？",
           detail:
-            "从 mpv 社区构建仓库下载固定版本 mpv/FFmpeg（约 62 MB），核验 SHA-256 后解压到本机应用数据目录。首次需联网，之后可离线播放本地文件。第三方代码保留原许可，未打包进本安装器。",
+            "从 mpv 社区构建仓库下载固定版本 mpv/FFmpeg，并从7-Zip官方仓库下载独立解压器（总计约 62 MB），核验 SHA-256 后解压到本机应用数据目录。不安装系统级7-Zip。首次需联网，之后可离线播放本地文件。第三方代码保留原许可及来源，未打包进本安装器。",
           buttons: ["取消", "下载并安装"],
           defaultId: 0,
           cancelId: 0,
