@@ -54,7 +54,8 @@ async function startServer(){const root=app.isPackaged?path.join(process.resourc
 }
 app.whenReady().then(async()=>{
   if(!smoke&&!app.requestSingleInstanceLock()){app.quit();return;}
-  win=new BrowserWindow({width:1240,height:820,minWidth:850,minHeight:600,title:'万能AI播放器',show:!smoke,backgroundColor:'#090d18',webPreferences:{preload:path.join(__dirname,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
+  win=new BrowserWindow({width:1240,height:820,minWidth:850,minHeight:600,title:'万能AI播放器',icon:path.join(app.isPackaged?process.resourcesPath:__dirname,'server/public/icons/icon-512.png'),show:!smoke,backgroundColor:'#090d18',webPreferences:{preload:path.join(__dirname,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
+  await win.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent('<!doctype html><meta charset="utf-8"><title>万能AI播放器 · 正在启动</title><body style="margin:60px;background:#090d18;color:#e5edff;font:18px system-ui"><h1>万能AI播放器</h1><p>正在启动本机服务。首次安装引擎需确认并联网下载约62MB，请等待校验完成。</p><p>取消下载后仍可使用网页搜索；不会上传本地媒体。</p>'));
   ipcMain.handle('native',(event,m)=>{if(event.senderFrame!==win.webContents.mainFrame||new URL(event.senderFrame.url).origin!==base)throw Error('Untrusted frame');const result=serial.then(()=>request(m));serial=result.catch(()=>{});return result;});
   win.webContents.setWindowOpenHandler(({url})=>{try{policy.mediaURL(url);shell.openExternal(url);}catch{}return {action:'deny'};});win.webContents.on('will-navigate',(e,url)=>{if(!base||new URL(url).origin!==base)e.preventDefault();});
   for(const name of ['move','resize','restore','enter-full-screen','leave-full-screen'])win.on(name,()=>{position();if(name.includes('full-screen'))emit({event:'windowState',fullscreen:win.isFullScreen(),pictureInPicture:false,transitioning:false});});win.on('minimize',()=>video?.hide());
