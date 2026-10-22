@@ -20,7 +20,9 @@ import WebKit
         defer { player.shutdown() }
         try player.engine.execute(.mute(true)); try player.engine.execute(.pause(true))
         var loaded: Result<Any, Error>?
-        player.handle(.loadURL(URL(fileURLWithPath: CommandLine.arguments[1]), position: 0)) { loaded = $0 }
+        let input = CommandLine.arguments[1]
+        let media = input.hasPrefix("http://127.0.0.1:") ? URL(string: input)! : URL(fileURLWithPath: input)
+        player.handle(.loadURL(media, position: 0)) { loaded = $0 }
         _ = try wait({ loaded }).get()
         player.handle(.setVideoRect(VideoRectangle(x: 0, y: 0, width: 960, height: 540, visible: true))) { _ in }
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))

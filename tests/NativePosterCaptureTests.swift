@@ -74,6 +74,23 @@ import Vision
         precondition(restores == 4)
         let stillPreserved = try Data(contentsOf: protected)
         precondition(stillPreserved == sentinel)
+        // Network posters use the already-decoded current frame, not six
+        // disruptive remote seeks. Never pad a single frame into fake stills.
+        var currentMetadata = metadata
+        currentMetadata.captureTimes = [13]
+        var currentPositions: [Double] = []
+        var currentResult: Result<Int, Error>?
+        let current = NativePosterCapture(metadata: currentMetadata, snapshot: { position, destination, done in
+            currentPositions.append(position)
+            do { try png.write(to: destination); done(.success(())) } catch { done(.failure(error)) }
+        }, restore: {})
+        try current.start(to: directory.appendingPathComponent("current.png")) { currentResult = $0 }
+        let currentDeadline = Date().addingTimeInterval(4)
+        while currentResult == nil && Date() < currentDeadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        guard case .success(1)? = currentResult, currentPositions == [13] else {
+            print("FAIL current-frame movie poster must capture exactly one real frame without seeking")
+            exit(1)
+        }
         for duration in [0, -1, Double.nan, Double.infinity, 604_801] {
             let invalid = NativePosterCapture(metadata: PosterMetadata(title: "test", duration: duration, width: 640, height: 360), snapshot: { _, _, _ in fatalError("invalid input started decoding") }, restore: {})
             do { try invalid.start(to: protected) { _ in }; fatalError("invalid duration accepted") } catch {}

@@ -48,6 +48,18 @@ AIPlayerMPV *aiplayer_mpv_create(void) {
     /* Copy-back keeps hardware acceleration without opaque VideoToolbox frames
        that libmpv's screenshot/OCR/GIF software conversion cannot read. */
     mpv_set_option_string(player->handle, "hwdec", "auto-copy");
+    /* Bounded session cache: keep watched packets for backward seeks without
+       refetching remote segments. Disk cache is deliberately disabled: mpv's
+       append-only disk file is NOT bounded by demuxer-max-(back-)bytes. */
+    if (mpv_set_option_string(player->handle, "cache", "yes") < 0 ||
+        mpv_set_option_string(player->handle, "cache-on-disk", "no") < 0 ||
+        mpv_set_option_string(player->handle, "demuxer-seekable-cache", "yes") < 0 ||
+        mpv_set_option_string(player->handle, "demuxer-max-bytes", "134217728") < 0 ||
+        mpv_set_option_string(player->handle, "demuxer-max-back-bytes", "536870912") < 0) {
+        mpv_terminate_destroy(player->handle);
+        free(player);
+        return NULL;
+    }
     if (mpv_initialize(player->handle) < 0) {
         mpv_terminate_destroy(player->handle);
         free(player);

@@ -320,13 +320,42 @@ final class NativeCaptureProgressController: NSWindowController, NSWindowDelegat
     }
 }
 
+/// Main-thread confined, current-media-only stills. No URL/path is retained.
+/// At most six 1200-by-1200 RGBA images (about 33 MiB), never full-resolution UHD.
+final class NativeWatchedFrameCache {
+    struct Frame { let time: Double; let image: CGImage }
+    private(set) var frames: [Frame] = []
+    private var pending: UUID?
+    private var lastTime: Double?
+
+    func beginSample(at time: Double) -> UUID? {
+        guard time.isFinite, time >= 0, pending == nil,
+              lastTime.map({ abs(time - $0) >= 5 }) ?? true else { return nil }
+        let token = UUID(); pending = token; return token
+    }
+    func complete(_ token: UUID, at time: Double, image: CGImage) throws {
+        guard pending == token else { return }
+        defer { pending = nil }
+        guard time.isFinite, time >= 0 else { return }
+        let width = max(1, min(1200, Int(1200 * Double(image.width) / Double(image.height))))
+        let resized = try NativeMediaTools.resized(image, maximumWidth: width)
+        frames.removeAll { abs($0.time - time) < 2.5 }
+        frames.append(Frame(time: time, image: resized))
+        if frames.count > 6 { frames.removeFirst(frames.count - 6) }
+        lastTime = time
+    }
+    func fail(_ token: UUID) { if pending == token { pending = nil } }
+    func reset() { frames.removeAll(); pending = nil; lastTime = nil }
+}
+
 struct PosterMetadata {
     let title: String
     let duration: Double
     let width: Int
     let height: Int
+    var captureTimes: [Double]? = nil
 
-    var timestamps: [Double] { (1...6).map { duration * Double($0) / 7 } }
+    var timestamps: [Double] { captureTimes ?? (1...6).map { duration * Double($0) / 7 } }
 }
 
 /// Sequential, bounded snapshots. The player adapter owns seeking and restoring
@@ -351,6 +380,7 @@ final class NativePosterCapture {
     func start(to output: URL, completion: @escaping (Result<Int, Error>) -> Void) throws {
         guard !started, metadata.duration.isFinite, (0.5...604_800).contains(metadata.duration),
               (1...32_768).contains(metadata.width), (1...32_768).contains(metadata.height),
+              (1...6).contains(metadata.timestamps.count), metadata.timestamps.allSatisfy({ $0.isFinite && $0 >= 0 && $0 <= metadata.duration }),
               frameTimeout.isFinite, frameTimeout > 0, frameTimeout <= 4 else {
             throw MediaToolError.message("当前媒体无法生成电影海报，请使用有时长且可定位的视频")
         }
@@ -412,7 +442,7 @@ final class NativePosterCapture {
 
     private static func encode(frames: [CGImage], metadata: PosterMetadata) throws -> Data {
         let width = 1200, height = 1800
-        guard frames.count == 6,
+        guard (1...6).contains(frames.count), frames.count == metadata.timestamps.count,
               let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
                   bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                   colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
@@ -437,7 +467,7 @@ final class NativePosterCapture {
             context.draw(image, in: NSRect(x: rect.midX - w / 2, y: rect.midY - h / 2, width: w, height: h))
             context.restoreGState()
         }
-        drawFrame(frames[hero], in: NSRect(x: 0, y: 740, width: width, height: 1060), cover: true)
+        drawFrame(frames[hero], in: NSRect(x: 0, y: 740, width: width, height: 1060), cover: frames.count > 1)
         NSGradient(starting: NSColor(calibratedWhite: 0.025, alpha: 1), ending: .clear)!
             .draw(in: NSRect(x: 0, y: 730, width: width, height: 750), angle: 90)
         NSGradient(starting: .clear, ending: NSColor.black.withAlphaComponent(0.6))!
@@ -461,13 +491,19 @@ final class NativePosterCapture {
             .font: NSFont.systemFont(ofSize: titleSize, weight: .bold), .foregroundColor: NSColor.white])
         // Honest local copy: no invented plot, score, or remote AI request.
         text("推荐：值得为这些精彩瞬间，留一次完整的观看。", NSRect(x: 56, y: 626, width: 1088, height: 48), 32, gold, .medium)
-        text("\(timestamp(metadata.duration))   /   \(metadata.width) × \(metadata.height)   /   精选画面", NSRect(x: 56, y: 574, width: 1088, height: 34), 22, muted)
+        let sceneLabel = frames.count == 1 ? "当前精彩画面 · \(timestamp(metadata.timestamps[0]))" : "精选画面"
+        text("\(timestamp(metadata.duration))   /   \(metadata.width) × \(metadata.height)   /   \(sceneLabel)", NSRect(x: 56, y: 574, width: 1088, height: 34), 22, muted)
         let supporting = frames.indices.filter { $0 != hero }
-        for (slot, index) in [supporting[0], supporting[2], supporting[4]].enumerated() {
+        let tiles = supporting.count >= 5 ? [supporting[0], supporting[2], supporting[4]] : Array(supporting.prefix(3))
+        for (slot, index) in tiles.enumerated() {
             let tile = NSRect(x: 56 + slot * 368, y: 340, width: 352, height: 198)
             NSColor.black.setFill(); tile.fill()
             drawFrame(frames[index], in: tile, cover: false)
             text(timestamp(metadata.timestamps[index]), NSRect(x: tile.minX, y: 306, width: tile.width, height: 28), 18, muted)
+        }
+        if frames.count == 1 {
+            text("一帧入戏，值得珍藏。", NSRect(x: 56, y: 406, width: 1088, height: 75), 56, gold, .light)
+            text("用万能AI播放器，收藏此刻的精彩。", NSRect(x: 56, y: 344, width: 1088, height: 45), 28, muted)
         }
         gold.withAlphaComponent(0.45).setFill()
         NSRect(x: 56, y: 280, width: 1088, height: 1).fill()

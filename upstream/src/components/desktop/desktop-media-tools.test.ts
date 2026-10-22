@@ -42,6 +42,12 @@ describe('inline GIF capture controls', () => {
     await act(async () => root.render(createElement(DesktopMediaTools, props)));
   }
 
+  it('passes the displayed movie title rather than an HLS playlist filename', async () => {
+    await render({ mediaTitle: '自有测试片名' });
+    await click('生成竖版电影海报');
+    expect(messages.at(-1)).toMatchObject({ command: 'capturePoster', args: { title: '自有测试片名' } });
+  });
+
   async function click(label: string) {
     const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
     expect(button, label).not.toBeNull();

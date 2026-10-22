@@ -53,6 +53,10 @@ import Foundation
         var posterAccepted = false
         do { _ = try NativeBridgePolicy.validateRequest(command: "capturePoster", args: [:], authorizedLocalIDs: []); posterAccepted = true } catch {}
         check(posterAccepted, "poster capture must accept an empty request")
+        var namedPosterAccepted = false
+        do { _ = try NativeBridgePolicy.validateRequest(command: "capturePoster", args: ["title": "自有测试片名"], authorizedLocalIDs: []); namedPosterAccepted = true } catch {}
+        check(namedPosterAccepted, "movie poster must accept the actual displayed video title")
+        rejects({ _ = try NativeBridgePolicy.validateRequest(command: "capturePoster", args: ["title": String(repeating: "x", count: 501)], authorizedLocalIDs: []) }, "poster title must be bounded")
         rejects({ _ = try NativeBridgePolicy.validateRequest(command: "capturePoster", args: ["path": "/tmp/arbitrary"], authorizedLocalIDs: []) }, "poster capture must reject caller-supplied paths")
         rejects({ _ = try NativeBridgePolicy.validateRequest(command: "captureGif", args: ["duration": 10.1, "fps": 10], authorizedLocalIDs: []) }, "overlong GIF capture must be refused")
         rejects({ _ = try NativeBridgePolicy.validateRequest(command: "captureGif", args: ["duration": 3.0, "fps": 31], authorizedLocalIDs: []) }, "excessive GIF frame rate must be refused")

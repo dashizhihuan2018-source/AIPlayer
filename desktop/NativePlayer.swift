@@ -553,6 +553,9 @@ final class NativePlayerController {
     private var clipDraft: NativeToolDraft?
     private var toolGeneration = UUID()
     private var currentMediaSource: URL?
+    private let watchedFrames = NativeWatchedFrameCache()
+    private var nextWatchedSample = Date.distantPast
+    var watchedFrameTimes: [Double] { watchedFrames.frames.map(\.time) }
     private let toolPresentation: ((NSWindowController) -> Void)?
     private let toolOutputStore: NativeToolOutputStore
     private let outputFolderOpener: (URL) -> Bool
@@ -600,6 +603,7 @@ final class NativePlayerController {
     var authorizedLocalIDs: Set<String> { store.authorizedIDs }
 
     func shutdown() {
+        watchedFrames.reset()
         timer?.invalidate()
         timer = nil
         windowObservers.forEach(NotificationCenter.default.removeObserver)
@@ -703,7 +707,7 @@ final class NativePlayerController {
                 if case .seek = command, isRecording { try stopRecording() }
                 if command == .stop { mediaTools.cancelCapture(); try stopRecording(); cancelPendingLoad(message: "加载已停止") }
                 try engine.execute(command)
-                if command == .stop { hasMedia = false; videoView.isHidden = true }
+                if command == .stop { hasMedia = false; videoView.isHidden = true; watchedFrames.reset() }
                 let current = state()
                 completion(.success(current))
                 if wasRecording || command == .stop { emitState(processEvents: false) }
@@ -741,6 +745,8 @@ final class NativePlayerController {
                 completion(.success(["opened": try openGIFOutputFolder()]))
             case .capturePoster:
                 capturePoster(completion: completion)
+            case .capturePosterNamed(let title):
+                capturePoster(title: title, completion: completion)
             case .recordStart:
                 startRecording(completion: completion)
             case .recordStop:
@@ -851,6 +857,7 @@ final class NativePlayerController {
     }
 
     private func prepareForMediaTransition() throws {
+        watchedFrames.reset(); nextWatchedSample = .distantPast
         closeToolWindows()
         posterCapture?.cancel()
         mediaTools.cancelCapture()
@@ -999,7 +1006,7 @@ final class NativePlayerController {
         return true
     }
 
-    private func capturePoster(completion: @escaping (Result<Any, Error>) -> Void) {
+    private func capturePoster(title: String? = nil, completion: @escaping (Result<Any, Error>) -> Void) {
         guard !posterPanelOpen, posterCapture == nil, hasMedia else {
             completion(.failure(MediaToolError.message("当前没有可生成海报的媒体或已有任务正在进行"))); return
         }
@@ -1009,13 +1016,12 @@ final class NativePlayerController {
             progressWindows[id] = progress
             progress.onCancel = { [weak self] in self?.posterCapture?.cancel() }
             presentToolWindow(progress)
-            populateProgressPreview(progress, draft: draft)
-            do { try beginPosterCapture(to: draft.fileURL) { [weak self] result in
+            do { try beginPosterCapture(to: draft.fileURL, title: title) { [weak self] result in
                 guard let self else { draft.close(); return }
                 progress.finish(); self.progressWindows.removeValue(forKey: id)
                 guard generation == self.toolGeneration else { draft.close(); completion(.success(["cancelled": true, "saved": false])); return }
                 switch result {
-                case .success: self.saveAndShowPreview(draft, fields: ["frames": 6], completion: completion)
+                case .success(let value): self.saveAndShowPreview(draft, fields: value as? [String: Any] ?? [:], completion: completion)
                 case .failure(let error): draft.close(); completion(.failure(error))
                 }
             } } catch { progress.finish(); progressWindows.removeValue(forKey: id); draft.close(); throw error }
@@ -1077,38 +1083,61 @@ final class NativePlayerController {
         previewWindows.removeAll()
     }
 
-    /// A portrait movie poster is composed from six actual decoded time points.
-    /// Never changes the source, uploads media, or exposes its path to the web.
-    func beginPosterCapture(to output: URL, completion: @escaping (Result<Any, Error>) -> Void) throws {
+    /// Network posters use only watched stills, never seeking into unseen segments.
+    /// Local files retain six-point sampling. No source URL reaches the poster.
+    func beginPosterCapture(to output: URL, title: String? = nil, completion: @escaping (Result<Any, Error>) -> Void) throws {
+        // Streaming seeks may fetch a new HLS segment for every sample. Use
+        // the frame the user is actually watching instead of six network seeks.
+        let currentFrameOnly = currentMediaSource?.isFileURL == false
         guard hasMedia, posterCapture == nil, !mediaTools.isProcessingGIF, !gifSaving, !isRecording,
-              engine.flag("seekable"), engine.integer("video-params/w") > 0 else {
+              (currentFrameOnly || engine.flag("seekable")), engine.integer("video-params/w") > 0 else {
             throw MediaToolError.message("请使用可定位的视频，并先结束 GIF 或录制任务")
         }
-        let metadata = PosterMetadata(title: engine.string("media-title", fallback: "AIPlayer"),
+        var metadata = PosterMetadata(title: title ?? engine.string("media-title", fallback: "AIPlayer"),
             duration: engine.double("duration"), width: Int(engine.integer("video-params/w")), height: Int(engine.integer("video-params/h")))
         let position = engine.double("time-pos"), paused = engine.flag("pause")
+        let cachedFrames = currentFrameOnly ? watchedFrames.frames.filter { $0.time <= metadata.duration }.sorted { $0.time < $1.time } : []
+        let usesWatchedCache = !cachedFrames.isEmpty
+        if currentFrameOnly { metadata.captureTimes = usesWatchedCache ? cachedFrames.map(\.time) : [max(0, min(position, metadata.duration))] }
+        if currentFrameOnly && !usesWatchedCache && (engine.awaitingDecodedFrame || engine.flag("seeking")) {
+            throw MediaToolError.message("请先播放出视频画面，再生成海报")
+        }
         let decoder = engine.string("hwdec", fallback: "auto-safe")
         let loopA = engine.double("ab-loop-a", fallback: -1), loopB = engine.double("ab-loop-b", fallback: -1)
         let capture = NativePosterCapture(metadata: metadata, snapshot: { [weak self] target, destination, done in
             guard let self else { done(.failure(MediaToolError.message("播放器已关闭"))); return }
-            self.snapshotPosterFrame(at: target, destination: destination, completion: done)
+            if let frame = cachedFrames.first(where: { $0.time == target }) {
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let result: Result<Void, Error> = Result {
+                        guard let png = NSBitmapImageRep(cgImage: frame.image).representation(using: .png, properties: [:]) else {
+                            throw MediaToolError.message("已观看画面编码失败")
+                        }
+                        try png.write(to: destination, options: .atomic)
+                    }
+                    DispatchQueue.main.async { done(result) }
+                }
+            }
+            else if currentFrameOnly { self.engine.captureFrameAsync(to: destination.path, completion: done) }
+            else { self.snapshotPosterFrame(at: target, destination: destination, completion: done) }
         }, restore: { [weak self] in
             guard let self else { return }
             self.posterFrameTimer?.invalidate(); self.posterFrameTimer = nil
-            try? self.engine.setFrameCaptureDecoder(decoder)
-            try? self.engine.execute(.seek(position))
-            try? self.engine.execute(.abLoopA(loopA >= 0 ? loopA : nil))
-            try? self.engine.execute(.abLoopB(loopB >= 0 ? loopB : nil))
-            try? self.engine.execute(.pause(paused))
+            if !usesWatchedCache && self.engine.string("hwdec") != decoder { try? self.engine.setFrameCaptureDecoder(decoder) }
+            if !currentFrameOnly {
+                try? self.engine.execute(.seek(position))
+                try? self.engine.execute(.abLoopA(loopA >= 0 ? loopA : nil))
+                try? self.engine.execute(.abLoopB(loopB >= 0 ? loopB : nil))
+            }
+            if !usesWatchedCache { try? self.engine.execute(.pause(paused)) }
         })
         posterCapture = capture
         do {
-            try engine.execute(.pause(true))
+            if !usesWatchedCache { try engine.execute(.pause(true)) }
             // Zero-copy VideoToolbox frames cannot be converted by libswscale
             // in libmpv screenshots. Copy-back retains hardware decoding while
             // making the decoded frames readable; restore the user's mode later.
-            if decoder != "no" { try engine.setFrameCaptureDecoder("auto-copy") }
-            try engine.execute(.abLoopA(nil)); try engine.execute(.abLoopB(nil))
+            if !usesWatchedCache && decoder != "no" && decoder != "auto-copy" { try engine.setFrameCaptureDecoder("auto-copy") }
+            if !currentFrameOnly { try engine.execute(.abLoopA(nil)); try engine.execute(.abLoopB(nil)) }
             try capture.start(to: output) { [weak self] result in
                 self?.posterCapture = nil
                 self?.emitState()
@@ -1116,10 +1145,14 @@ final class NativePlayerController {
             }
         } catch {
             posterCapture = nil
-            try? engine.setFrameCaptureDecoder(decoder)
-            try? engine.execute(.abLoopA(loopA >= 0 ? loopA : nil))
-            try? engine.execute(.abLoopB(loopB >= 0 ? loopB : nil))
-            try? engine.execute(.pause(paused))
+            if !usesWatchedCache {
+                try? engine.setFrameCaptureDecoder(decoder)
+                if !currentFrameOnly {
+                    try? engine.execute(.abLoopA(loopA >= 0 ? loopA : nil))
+                    try? engine.execute(.abLoopB(loopB >= 0 ? loopB : nil))
+                }
+                try? engine.execute(.pause(paused))
+            }
             throw error
         }
     }
@@ -1353,8 +1386,31 @@ final class NativePlayerController {
 
     private func emitState(error: String? = nil, processEvents: Bool = true) {
         var value = state(processEvents: processEvents)
+        sampleWatchedFrame()
         if let error { value["error"] = error }
         emit(["event": "state", "state": value])
+    }
+
+    private func sampleWatchedFrame() {
+        guard currentMediaSource?.isFileURL == false, hasMedia, requestedVisible,
+              !engine.flag("pause"), !engine.flag("seeking"), !engine.awaitingDecodedFrame,
+              posterCapture == nil, !mediaTools.isProcessingGIF, !isRecording,
+              Date() >= nextWatchedSample else { return }
+        let time = engine.double("time-pos", fallback: -1)
+        guard time > 0, let token = watchedFrames.beginSample(at: time) else { return }
+        nextWatchedSample = Date().addingTimeInterval(1)
+        let generation = toolGeneration, restart = engine.playbackRestartGeneration
+        videoView.captureGIFFrame(maximumWidth: 1200) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard generation == self.toolGeneration, self.hasMedia, self.requestedVisible,
+                      !self.engine.flag("seeking"), !self.engine.awaitingDecodedFrame,
+                      restart == self.engine.playbackRestartGeneration,
+                      abs(self.engine.double("time-pos") - time) < 1 else { self.watchedFrames.fail(token); return }
+                do { try self.watchedFrames.complete(token, at: time, image: result.get()) }
+                catch { self.watchedFrames.fail(token) }
+            }
+        }
     }
 
     func emitErrorState(_ error: Error) {

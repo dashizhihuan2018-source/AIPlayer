@@ -72,6 +72,7 @@ enum ValidatedNativeRequest: Equatable {
     case gifCancel
     case openGifFolder
     case capturePoster
+    case capturePosterNamed(String)
     case recordStart
     case recordStop
     case mediaReady
@@ -115,7 +116,12 @@ enum NativeBridgePolicy {
             let width = try requiredInteger(args["maximumWidth"], named: "maximumWidth", range: 640...3840)
             guard [640, 1280, 1920, 3840].contains(width) else { throw invalidValue(command) }
             return .gifStart(fps: try requiredInteger(args["fps"], named: "fps", range: 1...30), maximumWidth: width)
-        case "capturePoster": try requireEmpty(args, named: command); return .capturePoster
+        case "capturePoster":
+            if args.isEmpty { return .capturePoster }
+            guard Set(args.keys) == ["title"], let title = args["title"] as? String,
+                  !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, title.count <= 500,
+                  !title.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw invalidValue(command) }
+            return .capturePosterNamed(title)
         case "recordStart": try requireEmpty(args, named: command); return .recordStart
         case "recordStop": try requireEmpty(args, named: command); return .recordStop
         case "mediaReady": try requireEmpty(args, named: command); return .mediaReady
