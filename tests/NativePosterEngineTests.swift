@@ -60,7 +60,7 @@ import WebKit
         precondition(player.engine.string("hwdec") == decoder, "poster must restore the user's hardware decoder mode")
         let source = CGImageSourceCreateWithURL(output as CFURL, nil)!
         let image = CGImageSourceCreateImageAtIndex(source, 0, nil)!
-        precondition(image.width == 1200 && image.height == 620)
+        precondition(image.width == 1200 && image.height == 1800)
         if CommandLine.arguments.count == 3 {
             try Data(contentsOf: output).write(to: URL(fileURLWithPath: CommandLine.arguments[2]), options: .atomic)
         }

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import ImageIO
+import Vision
 
 @main struct NativePosterCaptureTests {
     static func main() throws {
@@ -29,7 +30,18 @@ import ImageIO
         precondition(count == 6 && positions == metadata.timestamps && restores == 1)
         let source = CGImageSourceCreateWithURL(output as CFURL, nil)!
         let decoded = CGImageSourceCreateImageAtIndex(source, 0, nil)!
-        precondition(decoded.width == 1200 && decoded.height > 500)
+        guard decoded.width == 1200 && decoded.height == 1800 else {
+            print("FAIL movie poster must be portrait 1200 × 1800, got \(decoded.width) × \(decoded.height)")
+            exit(1)
+        }
+        let barcode = VNDetectBarcodesRequest()
+        barcode.symbologies = [.qr]
+        try VNImageRequestHandler(cgImage: decoded).perform([barcode])
+        precondition(barcode.results?.contains { $0.payloadStringValue == "https://github.com/dashizhihuan2018-source/AIPlayer" } == true,
+            "movie poster must contain the real, decodable project QR")
+        if CommandLine.arguments.count > 1 {
+            try Data(contentsOf: output).write(to: URL(fileURLWithPath: CommandLine.arguments[1]))
+        }
 
         // Cancellation and a late snapshot callback must restore once, never
         // overwrite a preexisting user file, and never complete a second time.

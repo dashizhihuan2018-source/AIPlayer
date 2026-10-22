@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import AVKit
+import CoreImage
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -351,7 +352,7 @@ final class NativePosterCapture {
         guard !started, metadata.duration.isFinite, (0.5...604_800).contains(metadata.duration),
               (1...32_768).contains(metadata.width), (1...32_768).contains(metadata.height),
               frameTimeout.isFinite, frameTimeout > 0, frameTimeout <= 4 else {
-            throw MediaToolError.message("当前媒体无法生成时间线海报")
+            throw MediaToolError.message("当前媒体无法生成电影海报，请使用有时长且可定位的视频")
         }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("aiplayer-poster-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
@@ -393,7 +394,7 @@ final class NativePosterCapture {
                       let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
                     throw MediaToolError.message("当前媒体没有可用的视频画面")
                 }
-                self.frames.append(try NativeMediaTools.resized(image, maximumWidth: 640))
+                self.frames.append(try NativeMediaTools.resized(image, maximumWidth: 1200))
                 self.captureNext(to: output)
             } catch { self.finish(.failure(error)) }
         }
@@ -410,7 +411,7 @@ final class NativePosterCapture {
     }
 
     private static func encode(frames: [CGImage], metadata: PosterMetadata) throws -> Data {
-        let width = 1200, height = 620
+        let width = 1200, height = 1800
         guard frames.count == 6,
               let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
                   bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -421,26 +422,85 @@ final class NativePosterCapture {
         NSGraphicsContext.saveGraphicsState()
         defer { NSGraphicsContext.restoreGraphicsState() }
         NSGraphicsContext.current = graphics
-        NSColor(calibratedWhite: 0.07, alpha: 1).setFill()
+        NSColor(calibratedRed: 0.025, green: 0.04, blue: 0.055, alpha: 1).setFill()
         NSRect(x: 0, y: 0, width: width, height: height).fill()
-        let title = String(metadata.title.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.map(String.init).joined().prefix(140))
-        (title.isEmpty ? "AIPlayer" : title as NSString).draw(in: NSRect(x: 24, y: 566, width: 1152, height: 32), withAttributes: [
-            .font: NSFont.systemFont(ofSize: 23, weight: .semibold), .foregroundColor: NSColor.white])
-        let info = "\(timestamp(metadata.duration))  ·  \(metadata.width) × \(metadata.height)  ·  AIPlayer 时间线海报"
-        (info as NSString).draw(at: NSPoint(x: 24, y: 540), withAttributes: [
-            .font: NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor(calibratedWhite: 0.72, alpha: 1)])
-        for (index, image) in frames.enumerated() {
-            let tile = NSRect(x: 24 + (index % 3) * 388, y: 290 - (index / 3) * 258, width: 376, height: 216)
-            NSColor.black.setFill(); tile.fill()
-            let scale = min(tile.width / Double(image.width), tile.height / Double(image.height))
-            let size = NSSize(width: Double(image.width) * scale, height: Double(image.height) * scale)
-            graphics.cgContext.draw(image, in: NSRect(x: tile.midX - size.width / 2, y: tile.midY - size.height / 2, width: size.width, height: size.height))
-            (timestamp(metadata.timestamps[index]) as NSString).draw(at: NSPoint(x: tile.minX, y: tile.minY - 23), withAttributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium),
-                .foregroundColor: NSColor(calibratedRed: 1, green: 0.78, blue: 0.23, alpha: 1)])
+        let context = graphics.cgContext
+        let gold = NSColor(calibratedRed: 0.9, green: 0.77, blue: 0.51, alpha: 1)
+        let muted = NSColor(calibratedWhite: 0.72, alpha: 1)
+        // Contrast/exposure ranking is local and is not semantic AI analysis.
+        let hero = frames.indices.max { frameScore(frames[$0]) < frameScore(frames[$1]) } ?? 2
+        func drawFrame(_ image: CGImage, in rect: NSRect, cover: Bool) {
+            context.saveGState(); context.clip(to: rect)
+            let sx = rect.width / Double(image.width), sy = rect.height / Double(image.height)
+            let scale = cover ? max(sx, sy) : min(sx, sy)
+            let w = Double(image.width) * scale, h = Double(image.height) * scale
+            context.draw(image, in: NSRect(x: rect.midX - w / 2, y: rect.midY - h / 2, width: w, height: h))
+            context.restoreGState()
         }
+        drawFrame(frames[hero], in: NSRect(x: 0, y: 740, width: width, height: 1060), cover: true)
+        NSGradient(starting: NSColor(calibratedWhite: 0.025, alpha: 1), ending: .clear)!
+            .draw(in: NSRect(x: 0, y: 730, width: width, height: 750), angle: 90)
+        NSGradient(starting: .clear, ending: NSColor.black.withAlphaComponent(0.6))!
+            .draw(in: NSRect(x: 0, y: 1550, width: width, height: 250), angle: 90)
+        func text(_ value: String, _ rect: NSRect, _ size: CGFloat, _ color: NSColor, _ weight: NSFont.Weight = .regular) {
+            let style = NSMutableParagraphStyle(); style.lineBreakMode = .byTruncatingTail
+            (value as NSString).draw(in: rect, withAttributes: [
+                .font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: color, .paragraphStyle: style])
+        }
+        text("A I P L A Y E R   /   C I N E M A   C O L L E C T I O N", NSRect(x: 56, y: 1695, width: 1088, height: 40), 22, gold, .medium)
+        text("把精彩，留在这一帧。", NSRect(x: 56, y: 1625, width: 1088, height: 50), 34, .white, .light)
+        let raw = metadata.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Never print signed URL parameters or credentials as a video title.
+        let name = URL(string: raw).flatMap { $0.scheme == "https" || $0.scheme == "http" || $0.scheme == "file" ? $0.lastPathComponent : nil } ?? raw
+        let clean = String(name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.map(String.init).joined().prefix(140))
+        let title = clean.isEmpty ? "未命名影片" : clean
+        var titleSize: CGFloat = 72
+        let titleRect = NSRect(x: 56, y: 700, width: 1088, height: 230)
+        while titleSize > 30 && (title as NSString).boundingRect(with: NSSize(width: titleRect.width, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin], attributes: [.font: NSFont.systemFont(ofSize: titleSize, weight: .bold)]).height > titleRect.height - 10 { titleSize -= 2 }
+        (title as NSString).draw(with: titleRect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: [
+            .font: NSFont.systemFont(ofSize: titleSize, weight: .bold), .foregroundColor: NSColor.white])
+        // Honest local copy: no invented plot, score, or remote AI request.
+        text("推荐：值得为这些精彩瞬间，留一次完整的观看。", NSRect(x: 56, y: 626, width: 1088, height: 48), 32, gold, .medium)
+        text("\(timestamp(metadata.duration))   /   \(metadata.width) × \(metadata.height)   /   精选画面", NSRect(x: 56, y: 574, width: 1088, height: 34), 22, muted)
+        let supporting = frames.indices.filter { $0 != hero }
+        for (slot, index) in [supporting[0], supporting[2], supporting[4]].enumerated() {
+            let tile = NSRect(x: 56 + slot * 368, y: 340, width: 352, height: 198)
+            NSColor.black.setFill(); tile.fill()
+            drawFrame(frames[index], in: tile, cover: false)
+            text(timestamp(metadata.timestamps[index]), NSRect(x: tile.minX, y: 306, width: tile.width, height: 28), 18, muted)
+        }
+        gold.withAlphaComponent(0.45).setFill()
+        NSRect(x: 56, y: 280, width: 1088, height: 1).fill()
+        text("万能AI播放器", NSRect(x: 56, y: 195, width: 800, height: 58), 40, .white, .semibold)
+        text("本地播放 · 多源搜索 · 精彩一键珍藏", NSRect(x: 56, y: 143, width: 800, height: 40), 26, gold)
+        text("扫码前往 GitHub · 获取 App 与源码", NSRect(x: 56, y: 94, width: 800, height: 34), 22, muted)
+        text("© 2026 Nankong  /  AIPlayer", NSRect(x: 56, y: 48, width: 800, height: 28), 18, muted)
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { throw MediaToolError.message("无法创建项目二维码") }
+        filter.setValue(Data("https://github.com/dashizhihuan2018-source/AIPlayer".utf8), forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let qr = filter.outputImage,
+              let qrImage = CIContext().createCGImage(qr, from: qr.extent) else { throw MediaToolError.message("项目二维码编码失败") }
+        let qrSize = qr.extent.width * floor(196 / qr.extent.width)
+        NSColor.white.setFill(); NSRect(x: 912, y: 46, width: 232, height: 232).fill()
+        context.interpolationQuality = .none
+        context.draw(qrImage, in: NSRect(x: 1028 - qrSize / 2, y: 162 - qrSize / 2, width: qrSize, height: qrSize))
         guard let data = bitmap.representation(using: .png, properties: [:]) else { throw MediaToolError.message("海报编码失败") }
         return data
+    }
+
+    private static func frameScore(_ image: CGImage) -> Double {
+        var pixels = [UInt8](repeating: 0, count: 64 * 36 * 4)
+        return pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: 64, height: 36, bitsPerComponent: 8, bytesPerRow: 256,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return 0 }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 64, height: 36))
+            let values = stride(from: 0, to: buffer.count, by: 4).map { i in
+                (Double(buffer[i]) + Double(buffer[i + 1]) + Double(buffer[i + 2])) / 3
+            }
+            let mean = values.reduce(0, +) / Double(values.count)
+            let variance = values.reduce(0) { $0 + pow($1 - mean, 2) } / Double(values.count)
+            return variance * min(1, mean / 35) * min(1, (255 - mean) / 35)
+        }
     }
 
     private static func timestamp(_ seconds: Double) -> String {

@@ -1077,7 +1077,7 @@ final class NativePlayerController {
         previewWindows.removeAll()
     }
 
-    /// A saved contact sheet is generated from six actual decoded time points.
+    /// A portrait movie poster is composed from six actual decoded time points.
     /// Never changes the source, uploads media, or exposes its path to the web.
     func beginPosterCapture(to output: URL, completion: @escaping (Result<Any, Error>) -> Void) throws {
         guard hasMedia, posterCapture == nil, !mediaTools.isProcessingGIF, !gifSaving, !isRecording,
@@ -1130,13 +1130,17 @@ final class NativePlayerController {
             // time-pos alone is not proof that the new video frame decoded.
             processEngineEvents()
             let generation = engine.playbackRestartGeneration
+            // A frame spans 1/fps seconds. The old fixed one-second gate
+            // incorrectly timed out on valid low-frame-rate paused seeks.
+            let fps = engine.double("estimated-vf-fps")
+            let tolerance = fps > 0 ? max(1, min(60, 1 / fps + 0.1)) : 1
             try engine.execute(.seek(target))
             posterFrameTimer?.invalidate()
             let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] timer in
                 guard let self, self.posterCapture != nil else { timer.invalidate(); return }
                 self.processEngineEvents()
                 guard self.engine.playbackRestartGeneration != generation, !self.engine.flag("seeking"),
-                      abs(self.engine.double("time-pos") - target) < 1 else { return }
+                      abs(self.engine.double("time-pos") - target) < tolerance else { return }
                 timer.invalidate(); self.posterFrameTimer = nil
                 self.engine.captureFrameAsync(to: destination.path, completion: completion)
             }

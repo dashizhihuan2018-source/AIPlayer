@@ -55,8 +55,8 @@ describe('immersive desktop player UI', () => {
 
   it('gates the poster tool on real native capability instead of substituting fullscreen', () => {
     const html = render();
-    expect(html).toContain('aria-label="生成视频缩略图海报"');
-    expect(html).toMatch(/aria-label="生成视频缩略图海报"[^>]*disabled/);
+    expect(html).toContain('aria-label="生成竖版电影海报"');
+    expect(html).toMatch(/aria-label="生成竖版电影海报"[^>]*disabled/);
   });
 
   it('labels GIF as a capture flow, not a hard-coded immediate three-second save', () => {
