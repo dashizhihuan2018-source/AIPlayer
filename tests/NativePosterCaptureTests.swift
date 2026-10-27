@@ -37,8 +37,10 @@ import Vision
         let barcode = VNDetectBarcodesRequest()
         barcode.symbologies = [.qr]
         try VNImageRequestHandler(cgImage: decoded).perform([barcode])
-        precondition(barcode.results?.contains { $0.payloadStringValue == "https://github.com/dashizhihuan2018-source/AIPlayer" } == true,
-            "movie poster must contain the real, decodable project QR")
+        guard barcode.results?.contains(where: { $0.payloadStringValue == "https://dashizhihuan2018-source.github.io/AIPlayer-website/" }) == true else {
+            print("FAIL movie poster QR must decode to the official website")
+            exit(1)
+        }
         if CommandLine.arguments.count > 1 {
             try Data(contentsOf: output).write(to: URL(fileURLWithPath: CommandLine.arguments[1]))
         }

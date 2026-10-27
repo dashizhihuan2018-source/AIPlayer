@@ -509,10 +509,10 @@ final class NativePosterCapture {
         NSRect(x: 56, y: 280, width: 1088, height: 1).fill()
         text("万能AI播放器", NSRect(x: 56, y: 195, width: 800, height: 58), 40, .white, .semibold)
         text("本地播放 · 多源搜索 · 精彩一键珍藏", NSRect(x: 56, y: 143, width: 800, height: 40), 26, gold)
-        text("扫码前往 GitHub · 获取 App 与源码", NSRect(x: 56, y: 94, width: 800, height: 34), 22, muted)
+        text("扫码前往官网 · 获取 App 与源码", NSRect(x: 56, y: 94, width: 800, height: 34), 22, muted)
         text("© 2026 Nankong  /  AIPlayer", NSRect(x: 56, y: 48, width: 800, height: 28), 18, muted)
         guard let filter = CIFilter(name: "CIQRCodeGenerator") else { throw MediaToolError.message("无法创建项目二维码") }
-        filter.setValue(Data("https://github.com/dashizhihuan2018-source/AIPlayer".utf8), forKey: "inputMessage")
+        filter.setValue(Data("https://dashizhihuan2018-source.github.io/AIPlayer-website/".utf8), forKey: "inputMessage")
         filter.setValue("M", forKey: "inputCorrectionLevel")
         guard let qr = filter.outputImage,
               let qrImage = CIContext().createCGImage(qr, from: qr.extent) else { throw MediaToolError.message("项目二维码编码失败") }

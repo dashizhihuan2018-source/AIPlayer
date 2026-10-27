@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var retryButton: NSButton!
     var statusView: NSView!
     var nativePlayer: NativePlayerController!
+    var titlebarDrag: NativeTitlebarDragController?
     var server: Process?
     var logHandle: FileHandle?
     var lockFD: Int32 = -1
@@ -110,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         statusView.addSubview(stack)
         NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: statusView.centerXAnchor), stack.centerYAnchor.constraint(equalTo: statusView.centerYAnchor), stack.widthAnchor.constraint(lessThanOrEqualToConstant: 580)])
         window.contentView!.addSubview(statusView)
+        titlebarDrag = NativeTitlebarDragController(window: window)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

@@ -75,7 +75,7 @@ if [ ! -s "$NODE_LICENSE" ]; then
   curl --fail --location --max-time 30 -H 'Accept: application/vnd.github.raw+json' "https://api.github.com/repos/nodejs/node/contents/LICENSE?ref=$NODE_VERSION" -o "$NODE_LICENSE"
 fi
 cp "$NODE_LICENSE" "$APP/Contents/Resources/Node-LICENSE"
-COPYFILE_DISABLE=1 tar --no-mac-metadata --exclude=upstream/node_modules --exclude=upstream/.next --exclude=desktop/.build --exclude='*.tsbuildinfo' --exclude='.DS_Store' --exclude='*.log' --exclude='.env' --exclude='.env*.local' -czf "$APP/Contents/Resources/Source.tar.gz" -C "$ROOT" README.md LICENSE NOTICE.md upstream desktop tests docs
+COPYFILE_DISABLE=1 tar --no-mac-metadata --uid 0 --gid 0 --uname root --gname root --exclude=upstream/node_modules --exclude=upstream/.next --exclude=desktop/.build --exclude='*.tsbuildinfo' --exclude='.DS_Store' --exclude='*.log' --exclude='.env' --exclude='.env*.local' -czf "$APP/Contents/Resources/Source.tar.gz" -C "$ROOT" README.md LICENSE NOTICE.md upstream desktop tests docs scripts
 find "$APP/Contents/Frameworks" -type f -name '*.dylib' -exec codesign --force --sign - {} \;
 codesign --force --sign - "$APP/Contents/Resources/runtime/node"
 codesign --force --deep --sign - "$APP"

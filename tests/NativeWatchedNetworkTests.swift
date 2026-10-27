@@ -59,7 +59,7 @@ import WebKit
         precondition(image.width == 1200 && image.height == 1800)
         let qr = VNDetectBarcodesRequest(); qr.symbologies = [.qr]
         try VNImageRequestHandler(cgImage: image).perform([qr])
-        precondition(qr.results?.contains { $0.payloadStringValue == "https://github.com/dashizhihuan2018-source/AIPlayer" } == true)
+        precondition(qr.results?.contains { $0.payloadStringValue == "https://dashizhihuan2018-source.github.io/AIPlayer-website/" } == true)
         if CommandLine.arguments.count > 1 { try Data(contentsOf: output).write(to: URL(fileURLWithPath: CommandLine.arguments[1])) }
         // Already-watched video packets, not just stills, must remain usable
         // when the controlled origin refuses every request.

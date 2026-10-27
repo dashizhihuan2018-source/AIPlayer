@@ -528,6 +528,8 @@ final class NativePlayerController {
     private var activeScopedURL: URL?
     private var activeScopeStarted = false
     private var hasMedia = false
+    private let playbackPower = NativePlaybackPower()
+    private var keepAwakeEnabled = UserDefaults.standard.object(forKey: "AIPlayer.keepAwake") as? Bool ?? true
     private var requestedVisible = false
     private var recording = false
     private var mediaTools: NativeMediaTools!
@@ -603,6 +605,7 @@ final class NativePlayerController {
     var authorizedLocalIDs: Set<String> { store.authorizedIDs }
 
     func shutdown() {
+        playbackPower.release()
         watchedFrames.reset()
         timer?.invalidate()
         timer = nil
@@ -688,6 +691,10 @@ final class NativePlayerController {
             switch request {
             case .capabilities:
                 completion(.success(capabilities()))
+            case .keepAwake(let enabled):
+                keepAwakeEnabled = enabled
+                UserDefaults.standard.set(enabled, forKey: "AIPlayer.keepAwake")
+                completion(.success(state()))
             case .openFiles:
                 pickMedia { result in completion(result.map { $0 as Any }) }
             case .loadLocal(let id, let position):
@@ -1338,6 +1345,9 @@ final class NativePlayerController {
 
     private func state(processEvents: Bool = true) -> [String: Any] {
         if processEvents { processEngineEvents() }
+        playbackPower.update(enabled: keepAwakeEnabled,
+                             playing: hasMedia && !engine.flag("pause", fallback: true)
+                                && !engine.flag("idle-active", fallback: true) && !engine.ended && engine.lastError == nil)
         let tracks = (0..<max(0, Int(engine.integer("track-list/count")))).map { index -> [String: Any] in
             let prefix = "track-list/\(index)/"
             var track: [String: Any] = [
@@ -1358,6 +1368,8 @@ final class NativePlayerController {
             "available": engine.rendererReady,
             "engine": engine.string("mpv-version", fallback: "libmpv"),
             "paused": engine.flag("pause", fallback: true),
+            "keepAwake": keepAwakeEnabled,
+            "displayAwake": playbackPower.isActive,
             "time": engine.double("time-pos"),
             "duration": engine.double("duration"),
             "volume": engine.double("volume", fallback: 100),

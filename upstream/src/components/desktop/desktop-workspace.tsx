@@ -17,6 +17,7 @@ import { DesktopMediaTools } from './desktop-media-tools';
 import { DesktopHome } from './desktop-home';
 import { createSeekController } from '@/lib/seek-controller';
 import { createTransportIntent } from '@/lib/transport-intent';
+import { adSkipTarget, type AdRange } from '@/lib/ad-skip';
 import {
   nativeAvailable,
   nativeRequest,
@@ -174,6 +175,10 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
   const [seekStep, setSeekStep] = useState(10);
   const [preferredSpeed, setPreferredSpeed] = useState(1);
   const [pauseWhenHidden, setPauseWhenHidden] = useState(false);
+  const [autoSkipAds, setAutoSkipAds] = useState(true);
+  const [adAnalysis, setAdAnalysis] = useState<{ url: string; ranges: AdRange[]; duration: number } | null>(null);
+  const [adNotice, setAdNotice] = useState('');
+  const skippedAdRef = useRef(new Set<number>());
   const [sleepAtEnd, setSleepAtEnd] = useState(false);
   const [pipActive, setPipActive] = useState(false);
   const [windowFullscreen, setWindowFullscreen] = useState(false);
@@ -253,6 +258,7 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
       setPreferredSpeed(preferences.speed);
       setSeekStep(preferences.seekStep);
       setPauseWhenHidden(preferences.pauseWhenHidden);
+      setAutoSkipAds(localStorage.getItem('aiplayer.autoSkipAds') !== 'false');
     } catch {
       if (!externalRef.current) localStorage.removeItem(QUEUE_KEY);
     }
@@ -393,6 +399,39 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
   const seekBy = useCallback((delta: number) => { if (activeLoadRef.current === 0 && supportsCommand('seek')) transport.seek.relative(delta); }, [supportsCommand, transport]);
   const togglePause = useCallback(() => { if (supportsCommand('pause')) transport.pause.update((value) => !value); }, [supportsCommand, transport]);
   const toggleMute = useCallback(() => { if (supportsCommand('mute')) transport.mute.update((value) => !value); }, [supportsCommand, transport]);
+
+  const adSource = currentItem?.kind === 'url' ? currentItem.url : undefined;
+  useEffect(() => {
+    setAdAnalysis(null);
+    skippedAdRef.current.clear();
+    if (!nativeReady || !autoSkipAds || !adSource) { setAdNotice(''); return; }
+    let cancelled = false;
+    const abort = new AbortController();
+    setAdNotice('正在检测明确标记的 HLS 广告…');
+    void fetch(`/api/ad-ranges?url=${encodeURIComponent(adSource)}`, { signal: abort.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (cancelled) return;
+        if (!data?.supported || !Array.isArray(data.ranges) || !Number.isFinite(data.duration)) {
+          setAdNotice('当前片源不支持广告识别；不会猜测跳过正片'); return;
+        }
+        const ranges = data.ranges.filter((r: AdRange) => r && Number.isFinite(r.start) && Number.isFinite(r.end) && r.start >= 0 && r.end > r.start && r.end <= data.duration);
+        setAdAnalysis({ url: adSource, ranges, duration: data.duration });
+        setAdNotice(ranges.length ? `已识别 ${ranges.length} 段广告，播放到达时自动快进` : '未检测到明确标记的广告；内嵌广告暂不支持');
+      }).catch(() => { if (!cancelled) setAdNotice('广告检测暂不可用，不影响正常播放'); });
+    return () => { cancelled = true; abort.abort(); };
+  }, [adSource, autoSkipAds, nativeReady]);
+
+  useEffect(() => {
+    if (!autoSkipAds || !adAnalysis || adAnalysis.url !== adSource || activeLoadRef.current !== 0
+        || seeking || transport.seek.pending() || player.recording || player.exporting || player.gifCapturing
+        || Math.abs(adAnalysis.duration - player.duration) > 0.5) return;
+    const target = adSkipTarget(adAnalysis.ranges, player.time, player.duration, !player.paused && !player.ended);
+    if (target === null || skippedAdRef.current.has(target)) return;
+    skippedAdRef.current.add(target); // latch before async seek; never fight a user's rewind
+    transport.seek.absolute(target);
+    setAdNotice(`已自动快进广告至 ${formatTimecode(target)}；关闭开关后可回看`);
+  }, [adAnalysis, adSource, autoSkipAds, player, seeking, transport]);
 
   useEffect(() => {
     if (!pauseWhenHidden) return;
@@ -792,6 +831,15 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
           <button type="button" onClick={() => { setMenuOpen(false); requestShowDownloadManager(); }}>下载管理</button>
           <button type="button" onClick={() => { setMenuOpen(false); void toggleFullscreen(); }} disabled={!currentItem || !supportsFeature('fullscreen') || fullscreenTransitioning}>{windowFullscreen ? '退出全屏' : '进入全屏'}　F</button>
           <small>{nativeReady ? capabilities?.engine : mode === 'probing' ? '正在连接播放引擎' : '浏览器播放'}</small>
+          {nativeReady && <>
+            <label className="check-control"><input type="checkbox" checked={player.keepAwake !== false} onChange={(event) => {
+              void nativeRequest<NativeState>('keepAwake', { enabled: event.target.checked }).then(acceptPlayerState).catch(() => setStatus('无法设置播放唤醒'));
+            }} />播放时保持屏幕唤醒</label>
+            <label className="check-control"><input type="checkbox" checked={autoSkipAds} onChange={(event) => {
+              const enabled = event.target.checked; localStorage.setItem('aiplayer.autoSkipAds', String(enabled)); setAutoSkipAds(enabled);
+            }} />广告自动快进（明确标记的 HLS）</label>
+            <small>{adNotice || '仅在实际播放时保持唤醒；暂停、结束或退出后释放。手动锁屏不受影响。'}</small>
+          </>}
         </div>}
       </nav>
 

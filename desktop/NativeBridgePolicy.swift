@@ -79,6 +79,7 @@ enum ValidatedNativeRequest: Equatable {
     case mediaNotReady
     case pictureInPicture(Bool)
     case getWindowState
+    case keepAwake(Bool)
 }
 
 enum NativeBridgePolicy {
@@ -127,6 +128,9 @@ enum NativeBridgePolicy {
         case "mediaReady": try requireEmpty(args, named: command); return .mediaReady
         case "mediaNotReady": try requireEmpty(args, named: command); return .mediaNotReady
         case "getWindowState": try requireEmpty(args, named: command); return .getWindowState
+        case "keepAwake":
+            guard Set(args.keys) == ["enabled"] else { throw invalidValue(command) }
+            return .keepAwake(try requiredBool(args["enabled"], named: "enabled"))
         case "pictureInPicture":
             guard Set(args.keys) == ["enabled"] else { throw invalidValue(command) }
             return .pictureInPicture(try requiredBool(args["enabled"], named: "enabled"))

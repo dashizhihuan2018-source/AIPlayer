@@ -36,6 +36,8 @@ html.aiplayer-native-video-active .video-surface { background: transparent !impo
 .player-menu-popover a, .player-menu-popover button { display: block; width: 100%; min-height: 32px; padding: 8px 10px; border: 0; border-radius: 4px; text-align: left; text-decoration: none; background: transparent; color: #f0f0f0; cursor: pointer; }
 .player-menu-popover a:hover, .player-menu-popover button:hover:not(:disabled) { background: #ffffff16; }
 .player-menu-popover small { display: block; margin: 6px 9px 3px; padding-top: 9px; border-top: 1px solid #ffffff20; color: #a0a0a0; font-size: 10px; }
+.player-menu-popover .check-control { display: flex; gap: 7px; padding: 8px 7px; font-size: 12px; line-height: 1.5; color: #f0f0f0; }
+.player-menu-popover .check-control input { flex: 0 0 auto; }
 .stage-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; background: #171819; text-align: center; }
 .empty-brand-logo { width: clamp(100px, 16vh, 160px); height: clamp(100px, 16vh, 160px); object-fit: contain; margin-bottom: 20px; }
 .stage-empty strong { font-size: 18px; font-weight: 500; color: #dedee0; }

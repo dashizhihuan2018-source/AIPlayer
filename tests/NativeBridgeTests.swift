@@ -28,6 +28,12 @@ import Foundation
 
         check(try NativeBridgePolicy.validateRequest(command: "capabilities", args: [:], authorizedLocalIDs: []) == .capabilities, "known command must validate")
         check(try NativeBridgePolicy.validateRequest(command: "ocr", args: [:], authorizedLocalIDs: []) == .ocr, "OCR must accept no path or arbitrary input")
+        check(try NativeBridgePolicy.validateRequest(command: "keepAwake", args: ["enabled": true], authorizedLocalIDs: []) == .keepAwake(true), "keep awake must accept a boolean")
+        check(try NativeBridgePolicy.validateRequest(command: "keepAwake", args: ["enabled": false], authorizedLocalIDs: []) == .keepAwake(false), "keep awake must allow disabling")
+        rejects({ _ = try NativeBridgePolicy.validateRequest(command: "keepAwake", args: ["enabled": "true"], authorizedLocalIDs: []) }, "keep awake refuses strings")
+        rejects({ _ = try NativeBridgePolicy.validateRequest(command: "keepAwake", args: ["enabled": 1], authorizedLocalIDs: []) }, "keep awake refuses numbers")
+        rejects({ _ = try NativeBridgePolicy.validateRequest(command: "keepAwake", args: [:], authorizedLocalIDs: []) }, "keep awake requires enabled")
+        rejects({ _ = try NativeBridgePolicy.validateRequest(command: "keepAwake", args: ["enabled": true, "path": "/tmp"], authorizedLocalIDs: []) }, "keep awake refuses extra keys")
         var manualGIFAccepted = false
         do { _ = try NativeBridgePolicy.validateRequest(command: "gifStart", args: ["fps": 10, "maximumWidth": 640], authorizedLocalIDs: []); manualGIFAccepted = true } catch {}
         check(manualGIFAccepted, "manual GIF start must not require a fixed duration")

@@ -23,6 +23,8 @@ export interface NativeState {
   available: boolean;
   engine: string;
   paused: boolean;
+  keepAwake?: boolean;
+  displayAwake?: boolean;
   time: number;
   duration: number;
   volume: number;
@@ -122,6 +124,8 @@ function isNativeState(value: unknown): value is NativeState {
   if (typeof value.available !== 'boolean') return false;
   if (typeof value.engine !== 'string') return false;
   if (typeof value.paused !== 'boolean') return false;
+  if (value.keepAwake !== undefined && typeof value.keepAwake !== 'boolean') return false;
+  if (value.displayAwake !== undefined && typeof value.displayAwake !== 'boolean') return false;
   if (!isFiniteNumber(value.time) || !isFiniteNumber(value.duration)) return false;
   if (!isFiniteNumber(value.volume) || !isFiniteNumber(value.speed)) return false;
   if (typeof value.muted !== 'boolean' || typeof value.title !== 'string') return false;
