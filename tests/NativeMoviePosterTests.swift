@@ -18,12 +18,15 @@ import WebKit
         container.addSubview(web)
         let player = try NativePlayerController(webView: web, window: window, container: container, supportDirectory: root)
         defer { player.shutdown() }
-        try player.engine.execute(.mute(true)); try player.engine.execute(.pause(true))
+        try player.engine.execute(.mute(true))
         var loaded: Result<Any, Error>?
         let input = CommandLine.arguments[1]
         let media = input.hasPrefix("http://127.0.0.1:") ? URL(string: input)! : URL(fileURLWithPath: input)
         player.handle(.loadURL(media, position: 0)) { loaded = $0 }
         _ = try wait({ loaded }).get()
+        // New selections now autoplay. Pause the loaded item explicitly before
+        // testing that poster capture restores the user's paused state.
+        try player.engine.execute(.pause(true))
         player.handle(.setVideoRect(VideoRectangle(x: 0, y: 0, width: 960, height: 540, visible: true))) { _ in }
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
         let output = root.appendingPathComponent("movie.png")

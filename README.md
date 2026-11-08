@@ -2,12 +2,13 @@
 
 macOS Apple Silicon 本地播放器与多来源影视搜索工作区，基于 [LibreSpark/LibreTV](https://github.com/LibreSpark/LibreTV) 2.16.12 和独立 libmpv 引擎。非 LibreSpark、IINA 或 OmniPlayer 官方发行，不包含 OmniPlayer 的专有代码或素材。
 
-本仓库为 **V1.1.3（内部 build19）的干净公开源码**，不带私有研发仓库历史、用户媒体或诊断资料。[下载 macOS Apple Silicon 安装包](https://github.com/dashizhihuan2018-source/AIPlayer/releases/tag/v1.1.3)。安装包为 ad-hoc 签名、未经 Apple 公证的预览版；AI 是产品名称，此版本尚未接入 AI 服务或云端用户账号系统。
+本仓库为 **V1.1.4（内部 build20）的干净公开源码**，不带私有研发仓库历史、用户媒体或诊断资料。[下载 macOS Apple Silicon 安装包](https://github.com/dashizhihuan2018-source/AIPlayer/releases/tag/v1.1.4)。安装包为 ad-hoc 签名、未经 Apple 公证的预览版；AI 是产品名称，此版本尚未接入 AI 服务或云端用户账号系统。
 
 ## 当前功能
 
 - 中轴居中的星空首页、既有 P/AIPlayer Logo，“全网资源 一键搜索”进入发现与搜索。
 - 原生选择/拖入本地媒体、播放队列、播放/暂停、快退/快进、进度定位、速度、音量、全屏与画中画。
+- 修复自动连播切到下一集后仍暂停：新媒体加载时明确开始播放，不继承上一集结束或页面切换留下的暂停；加载后的手动暂停仍有效。
 - 顶栏中央空白区可按住鼠标左键拖窗；保留红绿灯、播放器菜单及右侧资源操作，不把视频画面变成拖动区。
 - 播放器菜单增加默认开启的“播放时保持屏幕唤醒”和“广告自动快进”。前者仅阻止播放期间的自动闲置息屏，暂停、结束或退出即释放，不改变系统设置，不绕过手动锁屏或合盖休眠。
 - 广告自动快进只支持点播 HLS 的明确广告路径或闭合 CUE-OUT/CUE-IN 标记，且各画质时间轴一致；每段最多 180 秒，每次播放会话只跳一次，录制/GIF/定位时不自动跳。未知片源、直播、混入正片的内嵌广告不猜测跳过，菜单会说明检测结果。
@@ -18,7 +19,7 @@ macOS Apple Silicon 本地播放器与多来源影视搜索工作区，基于 [L
 
 海报二维码现指向 [AIPlayer 官网](https://dashizhihuan2018-source.github.io/AIPlayer-website/)，已导出的旧海报不会自动改写。
 
-投屏、字幕烧录、语义 AI 剧情分析/推荐文案、云登录及完整专业播放器功能复刻不属于本版本已完成能力。海报需要有已知时长且已解码出视频画面的媒体；本地六点采样还需可定位，未知时长直播不支持。详细测试与限制见 [本轮验证范围](docs/V1.1.3-VERIFICATION.md)、[已看画面缓存验证](docs/V1.1.2-VERIFICATION.md)及[历史验证](docs/VERIFICATION.md)。
+投屏、字幕烧录、语义 AI 剧情分析/推荐文案、云登录及完整专业播放器功能复刻不属于本版本已完成能力。海报需要有已知时长且已解码出视频画面的媒体；本地六点采样还需可定位，未知时长直播不支持。详细测试与限制见 [本轮验证范围](docs/V1.1.4-VERIFICATION.md)、[播放功能验证](docs/V1.1.3-VERIFICATION.md)、[已看画面缓存验证](docs/V1.1.2-VERIFICATION.md)及[历史验证](docs/VERIFICATION.md)。
 
 ## 隐私与网络
 
@@ -46,6 +47,8 @@ bash desktop/build.sh
 构建后如需安装，先正常退出当前应用、备份旧包，再将成品放入 `/Applications`。不要同时运行相同 bundle ID 的多个副本。本次公开快照没有在另一台干净 Mac 完整重建/安装验收。
 
 原生引擎测试需要自行准备有权使用的媒体及依赖：`bash tests/run-native-engine-tests.sh /absolute/path/to/owned-timecode.mp4 [owned-4k.mp4]`。媒体不随仓库提供，不能把缺少 fixture 的测试说成已通过。
+
+自动连播回归：`bash tests/run-autoplay-tests.sh /absolute/path/to/owned-video.mp4`（可定位视频，至少三秒）。该测试使用真实 libmpv，检查连续三次 EOF 换片、页面退出暂停后的加载、恢复进度后的时钟推进及加载后的手动暂停。
 
 ## 许可与来源
 

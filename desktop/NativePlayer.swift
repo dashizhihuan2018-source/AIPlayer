@@ -57,6 +57,9 @@ final class MPVEngine {
     func load(_ location: String, position: Double?) throws -> Int64 {
         if let position, position > 0 { try command(["loadfile", location, "replace", "-1", "start=\(position)"]) }
         else { try command(["loadfile", location, "replace"]) }
+        // keep-open pauses at EOF, and navigation pauses the previous owner.
+        // A new media selection always starts playback; never inherit that pause.
+        try setFlag("pause", false)
         ended = false
         suppressEOFUntilRestart = true
         let playlistPosition = integer("playlist-pos", fallback: -1)
