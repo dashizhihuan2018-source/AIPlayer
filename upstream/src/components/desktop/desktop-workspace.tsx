@@ -850,7 +850,7 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
         </header>
 
         <section className="screening-stage" data-testid="screening-stage" aria-label="播放画面">
-          <div ref={surfaceRef} className="video-surface" onDoubleClick={() => void toggleFullscreen()}>
+          <div ref={surfaceRef} className="video-surface" onClick={currentItem ? togglePause : undefined} onDoubleClick={() => void toggleFullscreen()}>
             {browserMode && browserSrc && <video ref={videoRef} src={browserSrc} style={pictureStyle} onLoadedMetadata={onBrowserState} onTimeUpdate={onBrowserState} onSeeked={onBrowserState} onPlay={onBrowserState} onPause={onBrowserState} onVolumeChange={onBrowserState} onRateChange={onBrowserState} onEnded={onBrowserState} onError={() => setStatus('浏览器无法解码或读取该媒体文件')} playsInline />}
             {!currentItem && <DesktopHome onOpen={chooseMedia} canOpen={supportsFeature('openFiles')} connecting={mode === 'probing'} />}
             {browserMode && subtitleText && <div className="browser-subtitle">{subtitleText}</div>}

@@ -55,4 +55,36 @@ describe('actual workspace playback feature integration', () => {
     await act(async () => { state = { ...state, time: 26 }; emitState(); });
     expect(seeks()).toEqual([20]);
   });
+  it('toggles play/pause on stage click and keeps double-click fullscreen', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ supported: true, duration: 40, ranges: [] }) })));
+    let state: NativeState = { available: true, engine: 'libmpv', paused: false, time: 10, duration: 40,
+      volume: 100, speed: 1, muted: false, title: 'Owned test', tracks: [], chapters: [], width: 960, height: 540, subtitleDelay: 0, audioDelay: 0, keepAwake: true };
+    const messages: NativeRequestMessage[] = [];
+    const emitState = () => window.dispatchEvent(new CustomEvent('aiplayer:native', { detail: { event: 'state', state } }));
+    Object.defineProperty(window, 'webkit', { configurable: true, value: { messageHandlers: { desktop: {
+      postMessage: (message: NativeRequestMessage) => {
+        messages.push(message);
+        if (message.command === 'capabilities') {
+          queueMicrotask(() => window.dispatchEvent(new CustomEvent('aiplayer:native', { detail: { id: message.id, result: { available: true, engine: 'libmpv', commands: ['pause', 'seek'], openFiles: true, importSubtitle: false, screenshot: false, fullscreen: true } } })));
+          return;
+        }
+        queueMicrotask(() => window.dispatchEvent(new CustomEvent('aiplayer:native', { detail: { id: message.id, result: state } })));
+      },
+    } } } });
+    const container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
+    await act(async () => {
+      root!.render(createElement<{ externalPlayback?: ExternalPlayback }>(DesktopWorkspace, { externalPlayback: { items: [{ id: 'owned-online', kind: 'url', name: 'Owned test', url: 'https://media.example/owned.m3u8' }], currentIndex: 0, onSelect() {} } }));
+    });
+    await act(async () => { state = { ...state, time: 10 }; emitState(); });
+    const pauses = () => messages.filter((m) => m.command === 'command' && m.args.name === 'pause').map((m) => m.args.value);
+    const surface = container.querySelector('.video-surface') as HTMLElement;
+    await act(async () => { surface.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(pauses()).toEqual([true]);
+    await act(async () => { surface.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(pauses()).toEqual([true, false]);
+    await act(async () => { surface.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); });
+    expect(messages.some((m) => m.command === 'fullscreen')).toBe(true);
+  });
 });
