@@ -235,6 +235,7 @@ function WatchContent() {
               </button>
             )}
         <button onClick={() => store.updateSettings({ autoplayNext: !store.autoplayNext })} aria-pressed={store.autoplayNext}>自动连播{store.autoplayNext ? '：开' : '：关'}</button>
+        <button onClick={() => store.updateSettings({ autoSkipCredits: !store.autoSkipCredits })} aria-pressed={store.autoSkipCredits}>自动跳过片头片尾{store.autoSkipCredits ? '：开' : '：关'}</button>
       </div>
       <main aria-label="播放窗口">
               {currentUrl ? (
@@ -243,6 +244,8 @@ function WatchContent() {
                   title={videoTitle}
                   adFilter={store.adFilter}
                   autoplayNext={store.autoplayNext}
+                  autoSkipCredits={store.autoSkipCredits}
+                  episodeCount={episodes.length}
                   episodeKey={`${sourceKey}:${playbackId}:${currentIndex}`}
                   nextUrl={currentIndex + 1 < episodes.length ? episodes[currentIndex + 1] : undefined}
                   nextEpisodeKey={currentIndex + 1 < episodes.length ? `${sourceKey}:${playbackId}:${currentIndex + 1}` : undefined}

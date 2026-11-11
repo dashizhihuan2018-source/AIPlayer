@@ -18,6 +18,8 @@ import { DesktopHome } from './desktop-home';
 import { createSeekController } from '@/lib/seek-controller';
 import { createTransportIntent } from '@/lib/transport-intent';
 import { adSkipTarget, type AdRange } from '@/lib/ad-skip';
+import { endingSkipTarget, openingSkipTarget } from '@/lib/credits-skip';
+import { useAppStore } from '@/lib/store';
 import {
   nativeAvailable,
   nativeRequest,
@@ -121,6 +123,8 @@ export interface ExternalPlayback {
   items: MediaItem[];
   currentIndex: number;
   onSelect: (index: number) => void;
+  /** 自动跳过片头/片尾（仅多集在线剧集）：由播放页设置下发，默认开启 */
+  autoSkipCredits?: boolean;
   getRestorePosition?: () => Promise<number> | number;
   onProgress?: (time: number, duration: number) => void;
   onEnded?: () => void;
@@ -176,9 +180,16 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
   const [preferredSpeed, setPreferredSpeed] = useState(1);
   const [pauseWhenHidden, setPauseWhenHidden] = useState(false);
   const [autoSkipAds, setAutoSkipAds] = useState(true);
+  // 片头片尾跳过与 Web 设置页共用同一持久化开关（zustand store，默认开启）
+  const autoSkipCredits = useAppStore((s) => s.autoSkipCredits);
+  const updateSettings = useAppStore((s) => s.updateSettings);
   const [adAnalysis, setAdAnalysis] = useState<{ url: string; ranges: AdRange[]; duration: number } | null>(null);
   const [adNotice, setAdNotice] = useState('');
   const skippedAdRef = useRef(new Set<number>());
+  // 片头/片尾每集各自动跳一次；只有从头新起播（无恢复进度）才跳过片头
+  const creditsOpeningSkippedRef = useRef(false);
+  const creditsEndingSkippedRef = useRef(false);
+  const creditsFreshStartRef = useRef(false);
   const [sleepAtEnd, setSleepAtEnd] = useState(false);
   const [pipActive, setPipActive] = useState(false);
   const [windowFullscreen, setWindowFullscreen] = useState(false);
@@ -498,12 +509,16 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
     const token = { request: ++loadSequenceRef.current, generation: loadGenerationRef.current };
     activeLoadRef.current = token.request;
     endedLatchRef.current = false;
+    creditsOpeningSkippedRef.current = false;
+    creditsEndingSkippedRef.current = false;
+    creditsFreshStartRef.current = false;
     let cancelled = false;
     void (async () => {
       try {
         const restore = await externalRef.current?.getRestorePosition?.();
         if (cancelled || !isCurrentLoadRequest(token, activeLoadRef.current, loadGenerationRef.current)) return;
         const position = typeof restore === 'number' && Number.isFinite(restore) ? Math.max(0, restore) : 0;
+        creditsFreshStartRef.current = position === 0;
         const state = await nativeRequest<NativeState>('load', { url: externalUrl, position });
         if (cancelled || !isCurrentLoadRequest(token, activeLoadRef.current, loadGenerationRef.current)) return;
         activeLoadRef.current = 0;
@@ -525,6 +540,32 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
       externalRef.current.onProgress?.(player.time, player.duration);
     }
   }, [externalKey, nativeReady, player.duration, player.time, seeking]);
+
+  // 自动跳过片头/片尾（仅多集在线剧集；保守时间启发式，不识别内容、不猜正片）
+  useEffect(() => {
+    if (!externalRef.current || !nativeReady || loadedExternalRef.current !== externalKey || !externalKey
+        || activeLoadRef.current !== 0 || seeking || transport.seek.pending() || player.ended
+        || player.recording || player.exporting || player.gifCapturing) return;
+    const external = externalRef.current;
+    if (external.autoSkipCredits !== true || external.items.length < 2 || !currentItem || player.paused) return;
+    if (!creditsEndingSkippedRef.current) {
+      const target = endingSkipTarget(player.time, player.duration);
+      if (target !== null) {
+        creditsEndingSkippedRef.current = true;
+        transport.seek.absolute(target);
+        setStatus('已自动跳过片尾');
+        return;
+      }
+    }
+    if (creditsFreshStartRef.current && !creditsOpeningSkippedRef.current) {
+      const target = openingSkipTarget(player.time, player.duration);
+      if (target !== null) {
+        creditsOpeningSkippedRef.current = true;
+        transport.seek.absolute(target);
+        setStatus('已自动跳过片头，从 02:00 播放');
+      }
+    }
+  }, [currentItem, externalKey, nativeReady, player, seeking, setStatus, transport]);
 
   const openNativeFiles = useCallback(async () => {
     try {
@@ -686,21 +727,29 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return; // 不吞系统组合键；Alt+←/→ 切集由播放页处理
       if (!currentItem || activeLoadRef.current !== 0) return;
       const key = event.key.toLowerCase();
-      if (![' ', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'm', 'f'].includes(key) && event.code !== 'Space') return;
+      const isDigit = key.length === 1 && key >= '0' && key <= '9';
+      if (!isDigit && ![' ', 'k', 'j', 'l', ',', '.', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'm', 'f', 'p'].includes(key) && event.code !== 'Space') return;
       event.preventDefault();
-      if (event.code === 'Space') { if (!event.repeat) togglePause(); }
+      if (event.code === 'Space' || key === 'k') { if (!event.repeat) togglePause(); }
+      else if (key === 'j') seekBy(-10);
+      else if (key === 'l') seekBy(10);
+      else if (key === ',') seekBy(-5);
+      else if (key === '.') seekBy(5);
       else if (event.key === 'ArrowLeft') seekBy(-seekStep);
       else if (event.key === 'ArrowRight') seekBy(seekStep);
       else if (event.key === 'ArrowUp' && supportsCommand('volume')) transport.volume.update((value) => Math.min(100, value + 5));
       else if (event.key === 'ArrowDown' && supportsCommand('volume')) transport.volume.update((value) => Math.max(0, value - 5));
       else if (key === 'm') { if (!event.repeat) toggleMute(); }
       else if (key === 'f' && !event.repeat) void toggleFullscreen();
+      else if (key === 'p' && !event.repeat && nativeReady && capabilities?.commands.includes('pictureInPicture')) void togglePictureInPicture();
+      else if (isDigit && supportsCommand('seek') && duration > 0) transport.seek.absolute((Number(key) / 10) * duration);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [currentItem, seekBy, seekStep, supportsCommand, toggleFullscreen, toggleMute, togglePause, transport]);
+  }, [currentItem, capabilities, duration, nativeReady, seekBy, seekStep, supportsCommand, toggleFullscreen, toggleMute, togglePause, togglePictureInPicture, transport]);
 
   const onBrowserState = useCallback(() => {
     const video = videoRef.current;
@@ -838,6 +887,10 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
             <label className="check-control"><input type="checkbox" checked={autoSkipAds} onChange={(event) => {
               const enabled = event.target.checked; localStorage.setItem('aiplayer.autoSkipAds', String(enabled)); setAutoSkipAds(enabled);
             }} />广告自动快进（明确标记的 HLS）</label>
+            <label className="check-control"><input type="checkbox" checked={autoSkipCredits} onChange={(event) => {
+              void updateSettings({ autoSkipCredits: event.target.checked });
+            }} />自动跳过片头片尾（多集剧集）</label>
+            <small>快捷键：空格/K 播放暂停，J/L ±10s，,/. ±5s，0–9 定位 0–90%，M 静音，F 全屏，P 画中画</small>
             <small>{adNotice || '仅在实际播放时保持唤醒；暂停、结束或退出后释放。手动锁屏不受影响。'}</small>
           </>}
         </div>}

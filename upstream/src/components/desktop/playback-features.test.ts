@@ -47,11 +47,25 @@ describe('actual workspace playback feature integration', () => {
     expect(seeks()).toEqual([20]);
     await act(async () => (container.querySelector('[aria-label="打开播放器菜单"]') as HTMLButtonElement).click());
     const checks = Array.from(container.querySelectorAll<HTMLInputElement>('.player-menu-popover input'));
-    expect(checks).toHaveLength(2);
+    // 菜单里三个播放偏好：播放唤醒（原生命令）、广告自动快进（localStorage）、片头片尾跳过（共享设置，默认开）
+    expect(checks).toHaveLength(3);
     await act(async () => checks[0].click());
     expect(messages.some((m) => m.command === 'keepAwake' && m.args.enabled === false)).toBe(true);
     await act(async () => checks[1].click());
     expect(localStorage.getItem('aiplayer.autoSkipAds')).toBe('false');
+    await act(async () => checks[2].click());
+    // 设置走 800ms 节流落盘（persist-storage），断言前手动 flush
+    {
+      const { flushPendingPersist } = await import('@/lib/persist-storage');
+      flushPendingPersist();
+      expect(JSON.parse(localStorage.getItem('libretv-settings') ?? '{}').state.autoSkipCredits).toBe(false);
+    }
+    await act(async () => checks[2].click());
+    {
+      const { flushPendingPersist } = await import('@/lib/persist-storage');
+      flushPendingPersist();
+      expect(JSON.parse(localStorage.getItem('libretv-settings') ?? '{}').state.autoSkipCredits).toBe(true);
+    }
     await act(async () => { state = { ...state, time: 26 }; emitState(); });
     expect(seeks()).toEqual([20]);
   });

@@ -13,6 +13,7 @@ import {
 import { loadCacheSettings } from '@/lib/video-cache';
 import { formatTime } from '@/lib/utils';
 import { restorePosition } from '@/lib/resume-position';
+import { endingSkipTarget, openingSkipTarget } from '@/lib/credits-skip';
 import { isDirectVideoFile, loadMediaSource } from '@/lib/media-source';
 import { nativeAvailable, nativeRequest } from '@/lib/native-player';
 import {
@@ -42,6 +43,10 @@ interface PlayerShellProps {
   title: string;
   adFilter: boolean;
   autoplayNext: boolean;
+  /** 自动跳过片头/片尾（仅多集剧集）：起播越过片头、临近片尾直接跳到结尾衔接下一集 */
+  autoSkipCredits?: boolean;
+  /** 当前剧集的总集数：>=2 时才允许片头片尾跳过，单集电影/短片不触发 */
+  episodeCount?: number;
   /** 剧集标识 `${source}:${vodId}:${episodeIndex}`（片段缓存按集淘汰的分组键） */
   episodeKey?: string;
   /** 下一集 m3u8 地址：当前集预取完成后预热下一集前 7 分钟 */
@@ -62,6 +67,8 @@ export function PlayerShell({
   title,
   adFilter,
   autoplayNext,
+  autoSkipCredits,
+  episodeCount,
   episodeKey,
   nextUrl,
   nextEpisodeKey,
@@ -89,11 +96,11 @@ export function PlayerShell({
 
   // 始终持有最新 props/回调，避免重建播放器
   const propsRef = useRef({
-    url, title, adFilter, autoplayNext, episodeKey, nextUrl, nextEpisodeKey,
+    url, title, adFilter, autoplayNext, autoSkipCredits, episodeCount, episodeKey, nextUrl, nextEpisodeKey,
     getRestorePosition, onTimeUpdate, onEnded, onPause, onRequestSwitchSource,
   });
   propsRef.current = {
-    url, title, adFilter, autoplayNext, episodeKey, nextUrl, nextEpisodeKey,
+    url, title, adFilter, autoplayNext, autoSkipCredits, episodeCount, episodeKey, nextUrl, nextEpisodeKey,
     getRestorePosition, onTimeUpdate, onEnded, onPause, onRequestSwitchSource,
   };
 
@@ -114,6 +121,10 @@ export function PlayerShell({
   const recoveryRef = useRef<PlaybackRecovery | null>(null);
   // 自然播完标记，卸载时不回写进度（避免覆盖「已看完」记录）
   const endedRef = useRef(false);
+  // 片头/片尾每集各自动跳一次：只有从头新起播（无恢复进度）才跳过片头；多集剧集才允许
+  const creditsOpeningDoneRef = useRef(false);
+  const creditsEndingDoneRef = useRef(false);
+  const creditsFreshStartRef = useRef(false);
 
   const showHint = (text: string) => {
     setHint(text);
@@ -288,6 +299,9 @@ export function PlayerShell({
     restoredRef.current = false;
     lastPrefetchEnsureRef.current = 0;
     endedRef.current = false;
+    creditsOpeningDoneRef.current = false;
+    creditsEndingDoneRef.current = false;
+    creditsFreshStartRef.current = false;
     recoveryRef.current?.dispose();
     recoveryRef.current = new PlaybackRecovery();
     // 换集时清掉上一集的预取窗口，避免带宽被旧集占用
@@ -311,6 +325,9 @@ export function PlayerShell({
     restoredRef.current = false;
     recoveryRef.current = new PlaybackRecovery();
     endedRef.current = false;
+    creditsOpeningDoneRef.current = false;
+    creditsEndingDoneRef.current = false;
+    creditsFreshStartRef.current = false;
 
     let lastSave = 0;
 
@@ -391,10 +408,26 @@ export function PlayerShell({
           if (saved > 0) {
             showHint(`已从 ${formatTime(saved)} 继续播放`);
             ensurePrefetch(currentMediaUrlRef.current, saved);
+          } else if (creditsAllowed() ) {
+            // 从头新起播的多集剧集：越过片头（HLS 的 duration 在 metadata 时可能尚未就绪，
+            // 此时只标记；实际定位由 timeupdate 里 duration 可用时执行）
+            creditsFreshStartRef.current = true;
+            const target = openingSkipTarget(art.video.currentTime, art.video.duration);
+            if (target !== null) {
+              creditsOpeningDoneRef.current = true;
+              art.video.currentTime = target;
+              showHint('已自动跳过片头，从 02:00 播放');
+            }
           }
         } catch { /* A failed local database must not prevent playback. */ }
       }
     });
+
+    // 片头片尾跳过是否允许：开关开启 + 多集剧集 + 在线媒材（本地文件/电影不触发）
+    const creditsAllowed = () =>
+      propsRef.current.autoSkipCredits === true
+      && (propsRef.current.episodeCount ?? 0) >= 2
+      && !isDirectVideoFile(propsRef.current.url);
 
     art.on('video:playing', () => {
       playbackStartedRef.current = true;
@@ -420,6 +453,25 @@ export function PlayerShell({
       if (now - lastSave > 5000) {
         lastSave = now;
         propsRef.current.onTimeUpdate?.(art.currentTime, art.duration);
+      }
+      // 自动跳过片头/片尾：每集各触发一次；暂停时不动（timeupdate 暂停时不派发）
+      if (creditsAllowed() && !art.video.paused) {
+        if (creditsFreshStartRef.current && !creditsOpeningDoneRef.current) {
+          const opening = openingSkipTarget(art.currentTime, art.duration);
+          if (opening !== null) {
+            creditsOpeningDoneRef.current = true;
+            art.video.currentTime = opening;
+            showHint('已自动跳过片头，从 02:00 播放');
+          }
+        } else if (!creditsEndingDoneRef.current) {
+          // 片尾 90 秒窗口只跳一次到结尾：自然结束 → onEnded → 自动连播切下一集
+          const target = endingSkipTarget(art.currentTime, art.duration);
+          if (target !== null) {
+            creditsEndingDoneRef.current = true;
+            art.video.currentTime = target;
+            showHint('已自动跳过片尾');
+          }
+        }
       }
       // 每 30s 续跑一次前向预取窗口（ensure 幂等，窗口未覆盖足够余量才会重建）
       if (now - lastPrefetchEnsureRef.current > 30_000) {
@@ -456,6 +508,7 @@ export function PlayerShell({
       const target = e.target as HTMLElement;
       // 输入框或按钮获得焦点时不劫持按键：否则空格会吞掉按钮的默认激活
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('button')) return;
+      if (e.ctrlKey || e.metaKey) return;
       const current = artRef.current;
       if (!current) return;
       if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); return; } // 由父层处理集数切换
@@ -476,9 +529,44 @@ export function PlayerShell({
         case ' ':
           current.toggle(); showHint('播放/暂停'); e.preventDefault();
           break;
+        case 'k': case 'K':
+          current.toggle(); showHint('播放/暂停'); e.preventDefault();
+          break;
+        case 'j': case 'J':
+          current.currentTime = Math.max(0, current.currentTime - 10); showHint('快退 10s'); e.preventDefault();
+          break;
+        case 'l': case 'L':
+          current.currentTime = Math.min(current.duration || current.currentTime, current.currentTime + 10); showHint('快进 10s'); e.preventDefault();
+          break;
+        case ',':
+          current.currentTime = Math.max(0, current.currentTime - 5); showHint('快退 5s'); e.preventDefault();
+          break;
+        case '.':
+          current.currentTime = Math.min(current.duration || current.currentTime, current.currentTime + 5); showHint('快进 5s'); e.preventDefault();
+          break;
+        case 'm': case 'M':
+          current.muted = !current.muted; showHint(current.muted ? '已静音' : '已取消静音'); e.preventDefault();
+          break;
         case 'f': case 'F':
           void requestFullscreen(); e.preventDefault();
           break;
+        case 'p': case 'P':
+          // 画中画走 video 元素的 PiP API：原生引擎路径下 WKWebView 不支持 DOM PiP，按键时保持静音无害
+          {
+            const video = current.video as HTMLVideoElement & { requestPictureInPicture?: () => Promise<unknown>; exitPictureInPicture?: () => Promise<unknown> };
+            void ((document as unknown as { pictureInPictureElement?: unknown }).pictureInPictureElement
+              ? video.exitPictureInPicture?.()
+              : video.requestPictureInPicture?.());
+          }
+          showHint('画中画'); e.preventDefault();
+          break;
+        default:
+          if (/^[0-9]$/.test(e.key)) {
+            const percent = Number(e.key) / 10;
+            current.currentTime = Math.min(current.duration || 0, Math.max(0, percent * current.duration));
+            showHint(`定位到 ${Math.round(percent * 100)}%`);
+            e.preventDefault();
+          }
       }
     };
     document.addEventListener('keydown', shortcuts);

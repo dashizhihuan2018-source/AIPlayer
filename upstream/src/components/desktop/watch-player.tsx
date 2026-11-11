@@ -46,12 +46,13 @@ export function WatchPlayer(props: WatchPlayerProps) {
     currentIndex: Math.min(Math.max(props.currentIndex ?? 0, 0), Math.max(0, items.length - 1)),
     title: props.title,
     sourceLabel: props.sourceLabel,
+    autoSkipCredits: props.autoSkipCredits,
     onSelect: props.onSelect ?? (() => undefined),
     onBack: props.onBack,
     getRestorePosition: props.getRestorePosition,
     onProgress: props.onTimeUpdate,
     onEnded: props.onEnded,
-  }), [items, props.currentIndex, props.title, props.sourceLabel, props.onSelect, props.onBack,
+  }), [items, props.currentIndex, props.title, props.sourceLabel, props.autoSkipCredits, props.onSelect, props.onBack,
     props.getRestorePosition, props.onTimeUpdate, props.onEnded]);
 
   if (nativeHost) return <DesktopWorkspace externalPlayback={externalPlayback} />;

@@ -574,6 +574,12 @@ function PlaybackPanel() {
           checked={store.autoplayNext}
           onChange={(v) => store.updateSettings({ autoplayNext: v })}
         />
+        <ToggleRow
+          label="自动跳过片头片尾"
+          description="多集剧集：起播自动越过片头（定位到 02:00）、临近片尾直接跳到结尾衔接下一集；单集电影与本地文件不生效"
+          checked={store.autoSkipCredits}
+          onChange={(v) => store.updateSettings({ autoSkipCredits: v })}
+        />
       </div>
       <VideoCachePanel />
     </section>
