@@ -515,10 +515,10 @@ export function PlayerShell({
       if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); return; }
       switch (e.key) {
         case 'ArrowLeft':
-          if (current.currentTime > 5) { current.currentTime -= 5; showHint('快退 5s'); e.preventDefault(); }
+          if (current.currentTime > (e.shiftKey ? 60 : 10)) { const delta = e.shiftKey ? 60 : 10; current.currentTime -= delta; showHint(`快退 ${delta}s`); e.preventDefault(); }
           break;
         case 'ArrowRight':
-          if (current.duration - current.currentTime > 5) { current.currentTime += 5; showHint('快进 5s'); e.preventDefault(); }
+          if (current.duration - current.currentTime > (e.shiftKey ? 60 : 10)) { const delta = e.shiftKey ? 60 : 10; current.currentTime += delta; showHint(`快进 ${delta}s`); e.preventDefault(); }
           break;
         case 'ArrowUp':
           if (current.volume < 1) { current.volume = Math.min(1, current.volume + 0.1); showHint(`音量 ${Math.round(current.volume * 100)}%`); e.preventDefault(); }

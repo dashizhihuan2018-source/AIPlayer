@@ -1321,6 +1321,12 @@ final class NativePlayerController {
         toggleFullscreen { _ in }
     }
 
+    /// 原生命单播放快捷键（⌘. 停止、⌘W 关闭当前、⌘S 截图等）统一转发给 Web 层执行：
+    /// 播放队列与面板状态都在 Web 侧，原生只负责按键路由与系统级动作（⌘Q 退出）。
+    func emitShortcut(_ action: String) {
+        emit(["event": "menuShortcut", "action": action])
+    }
+
     private func windowState() -> [String: Any] {
         [
             "fullscreen": window?.styleMask.contains(.fullScreen) ?? false,

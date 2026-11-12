@@ -41,6 +41,7 @@ import {
 import {
   adjustCurrentAfterMove,
   adjustCurrentAfterRemove,
+  captureResultMessage,
   clipVideoRect,
   consumeEndedEdge,
   parseNativeCapabilities,
@@ -54,6 +55,7 @@ import {
   queueView,
   parsePlayerPreferences,
   parseOpenMediaEvent,
+  parseMenuShortcutEvent,
   parseWindowState,
   isCurrentLoadRequest,
   replaceSleepTimer,
@@ -63,6 +65,7 @@ import {
   type DesktopCapabilities,
   type SavedBookmark,
   type WorkspaceMemory,
+  type MenuShortcutAction,
 } from './desktop-workspace-logic';
 
 type Panel = 'queue' | 'picture' | 'audio' | 'subtitle';
@@ -592,6 +595,8 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
         setWindowFullscreen(windowState.fullscreen);
         setFullscreenTransitioning(windowState.transitioning);
       }
+      const shortcut = parseMenuShortcutEvent(detail);
+      if (shortcut !== null) { handleMenuShortcutRef.current(shortcut); return; }
       const items = parseOpenMediaEvent(detail);
       if (!items || externalRef.current) return;
       const start = queueRef.current.length;
@@ -724,6 +729,66 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
     }
   }, [pipActive]);
 
+  const [pendingMediaInfo, setPendingMediaInfo] = useState(false);
+
+  // 原生「播放」菜单快捷键（对齐 OmniPlayer 风格：⌘. 停止 / ⌘W 关闭当前 / ⌘←/→ 上下一项 /
+  // ⌘L 播放列表 / ⌘S 截图 / ⌘I 媒体信息 / ⌘⇧P 画中画 / ⌘⇧O 观看历史 / ⌘, 菜单）由 AppKit
+  // 菜单消费按键后经 menuShortcut 事件路由到这里执行；播放队列与面板状态都在 Web 侧。
+  const handleMenuShortcut = useCallback((action: MenuShortcutAction) => {
+    switch (action) {
+      case 'stop':
+        void runCommand('stop');
+        break;
+      case 'closeFile':
+        if (externalRef.current?.onBack) { externalRef.current.onBack(); break; }
+        void runCommand('stop');
+        break;
+      case 'prevItem':
+        stepQueue(-1);
+        break;
+      case 'nextItem':
+        stepQueue(1);
+        break;
+      case 'togglePlaylist': {
+        const openNow = panel === 'queue' && !collapsed;
+        setPanel('queue');
+        setCollapsed(openNow);
+        break;
+      }
+      case 'screenshot':
+        if (!supportsFeature('screenshot')) { setStatus('当前播放模式不可用截图'); break; }
+        void nativeRequest<unknown>('screenshot')
+          .then((result) => { const message = captureResultMessage('screenshot', result); if (message) setStatus(message); })
+          .catch((error) => setStatus(userFacingError(error, '截图失败')));
+        break;
+      case 'showMediaInfo':
+        setPanel('picture');
+        setCollapsed(false);
+        setPendingMediaInfo(true);
+        break;
+      case 'pip':
+        if (nativeReady && capabilities?.commands.includes('pictureInPicture')) void togglePictureInPicture();
+        break;
+      case 'showHistory':
+        setHistoryOpen(true);
+        break;
+      case 'showMenu':
+        setMenuOpen(true);
+        break;
+    }
+  }, [capabilities, collapsed, nativeReady, panel, runCommand, stepQueue, supportsFeature, togglePictureInPicture]);
+  const handleMenuShortcutRef = useRef(handleMenuShortcut);
+  useEffect(() => { handleMenuShortcutRef.current = handleMenuShortcut; }, [handleMenuShortcut]);
+
+  // Cmd+I（媒体信息）打开后，把“媒体信息与播放偏好”分组展开
+  useEffect(() => {
+    if (!pendingMediaInfo) return;
+    const node = Array.from(document.querySelectorAll<HTMLDetailsElement>('details.settings-details'))
+      .find((details) => (details.querySelector('summary')?.textContent ?? '').includes('媒体信息'));
+    if (node) node.open = true;
+    setPendingMediaInfo(false);
+  }, [pendingMediaInfo, panel, collapsed]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
@@ -738,8 +803,8 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
       else if (key === 'l') seekBy(10);
       else if (key === ',') seekBy(-5);
       else if (key === '.') seekBy(5);
-      else if (event.key === 'ArrowLeft') seekBy(-seekStep);
-      else if (event.key === 'ArrowRight') seekBy(seekStep);
+      else if (event.key === 'ArrowLeft') seekBy(event.shiftKey ? -60 : -seekStep);
+      else if (event.key === 'ArrowRight') seekBy(event.shiftKey ? 60 : seekStep);
       else if (event.key === 'ArrowUp' && supportsCommand('volume')) transport.volume.update((value) => Math.min(100, value + 5));
       else if (event.key === 'ArrowDown' && supportsCommand('volume')) transport.volume.update((value) => Math.max(0, value - 5));
       else if (key === 'm') { if (!event.repeat) toggleMute(); }
@@ -890,7 +955,7 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
             <label className="check-control"><input type="checkbox" checked={autoSkipCredits} onChange={(event) => {
               void updateSettings({ autoSkipCredits: event.target.checked });
             }} />自动跳过片头片尾（多集剧集）</label>
-            <small>快捷键：空格/K 播放暂停，J/L ±10s，,/. ±5s，0–9 定位 0–90%，M 静音，F 全屏，P 画中画</small>
+            <small>快捷键：空格/K 播放暂停，←/→ ±步长，Shift+←/→ ±60s，J/L ±10s，,/. ±5s，↑/↓ 音量，0–9 定位 0–90%，M 静音，F 全屏，P 画中画；⌘Q 关闭软件，⌘W 关闭当前，⌘. 停止，⌘←/→ 上/下一项，⌘L 播放列表，⌘S 截图，⌘I 媒体信息</small>
             <small>{adNotice || '仅在实际播放时保持唤醒；暂停、结束或退出后释放。手动锁屏不受影响。'}</small>
           </>}
         </div>}

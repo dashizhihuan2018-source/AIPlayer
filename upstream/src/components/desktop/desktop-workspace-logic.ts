@@ -250,3 +250,13 @@ export function parseOpenMediaEvent(value: unknown): MediaItem[] | null {
   }
   return items;
 }
+
+/** 原生命单播放快捷键（⌘. 停止、⌘W 关闭当前、⌘←/→ 上/下一项、⌘L 播放列表、⌘S 截图等）
+ * 由 AppKit 菜单消费按键后经 aiplayer:native 事件路由到 Web 层执行；队列与面板状态都在 Web 侧。 */
+const MENU_SHORTCUT_ACTIONS = ['stop', 'closeFile', 'prevItem', 'nextItem', 'togglePlaylist', 'screenshot', 'showMediaInfo', 'pip', 'showHistory', 'showMenu'] as const;
+export type MenuShortcutAction = (typeof MENU_SHORTCUT_ACTIONS)[number];
+
+export function parseMenuShortcutEvent(value: unknown): MenuShortcutAction | null {
+  if (!isRecord(value) || value.event !== 'menuShortcut' || typeof value.action !== 'string') return null;
+  return (MENU_SHORTCUT_ACTIONS as readonly string[]).includes(value.action) ? value.action as MenuShortcutAction : null;
+}

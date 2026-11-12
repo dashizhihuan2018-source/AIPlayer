@@ -17,6 +17,7 @@ import {
   queueView,
   parsePlayerPreferences,
   parseOpenMediaEvent,
+  parseMenuShortcutEvent,
   resolveLoadSelection,
   supportsMediaTool,
   isCurrentLoadRequest,
@@ -206,6 +207,16 @@ describe('desktop workspace shell', () => {
     expect(parseOpenMediaEvent({ event: 'openMedia', items: [{ id: '../movie', name: 'Bad', kind: 'local' }] })).toBeNull();
     expect(parseOpenMediaEvent({ event: 'openMedia', items: [{ id: 'url_1', name: 'Bad', kind: 'url', url: 'file:///tmp/a' }] })).toBeNull();
     expect(parseOpenMediaEvent({ event: 'state', items: [] })).toBeNull();
+  });
+
+  it('routes only the known native menu shortcuts to the web layer', () => {
+    for (const action of ['stop', 'closeFile', 'prevItem', 'nextItem', 'togglePlaylist', 'screenshot', 'showMediaInfo', 'pip', 'showHistory', 'showMenu']) {
+      expect(parseMenuShortcutEvent({ event: 'menuShortcut', action })).toBe(action);
+    }
+    expect(parseMenuShortcutEvent({ event: 'menuShortcut', action: 'openFile' })).toBeNull();
+    expect(parseMenuShortcutEvent({ event: 'menuShortcut' })).toBeNull();
+    expect(parseMenuShortcutEvent({ event: 'state' })).toBeNull();
+    expect(parseMenuShortcutEvent(null)).toBeNull();
   });
 
   it('gates native media tools against the exact advertised capability', () => {

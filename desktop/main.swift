@@ -125,9 +125,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             menu.addItem(item)
             return sub
         }
-        func add(_ sub: NSMenu, _ title: String, _ selector: Selector, _ key: String = "") {
+        func add(_ sub: NSMenu, _ title: String, _ selector: Selector, _ key: String = "", _ mask: NSEvent.ModifierFlags = .command) {
             let item = NSMenuItem(title: title, action: selector, keyEquivalent: key)
             item.target = self
+            item.keyEquivalentModifierMask = mask
             sub.addItem(item)
         }
         let app = submenu("万能AI播放器")
@@ -137,20 +138,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         add(app, "退出 万能AI播放器", #selector(quit), "q")
         let file = submenu("文件")
         add(file, "打开本地媒体…", #selector(openLocalMedia), "o")
-        add(file, "打开视频链接…", #selector(openVideo), "l")
+        add(file, "打开视频链接…", #selector(openVideo), "l", [.command, .shift])
         file.addItem(.separator())
         add(file, "查看 GIF 成果文件夹", #selector(openGIFFolder))
         let edit = submenu("编辑")
         for (name, selector, key) in [("撤销", "undo:", "z"), ("剪切", "cut:", "x"), ("复制", "copy:", "c"), ("粘贴", "paste:", "v"), ("全选", "selectAll:", "a")] {
             edit.addItem(withTitle: name, action: Selector(selector), keyEquivalent: key)
         }
+        let play = submenu("播放")
+        add(play, "停止播放", #selector(stopPlayback), ".")
+        add(play, "关闭当前媒体", #selector(closeCurrentMedia), "w")
+        add(play, "上一项", #selector(prevItem), "\u{2190}")
+        add(play, "下一项", #selector(nextItem), "\u{2192}")
+        add(play, "显示/隐藏播放列表", #selector(togglePlaylist), "l")
+        add(play, "截图", #selector(takeScreenshot), "s")
+        add(play, "媒体信息", #selector(showMediaInfo), "i")
+        add(play, "画中画", #selector(togglePip), "p", [.command, .shift])
+        add(play, "观看历史", #selector(showHistory), "o", [.command, .shift])
+        add(play, "播放器菜单", #selector(showMenu), ",")
         let view = submenu("浏览")
         add(view, "首页", #selector(home), "1")
         add(view, "后退", #selector(back), "[")
         add(view, "前进", #selector(forward), "]")
         add(view, "重新载入", #selector(reload), "r")
         add(view, "切换全屏", #selector(fullscreen), "f")
-        view.items.last?.keyEquivalentModifierMask = [.command, .control]
+        view.items.last?.keyEquivalentModifierMask = [.command]
         let help = submenu("帮助")
         add(help, "原生播放示例（Apple）", #selector(playDemo))
         add(help, "在线播放示例（Apple）", #selector(playWebDemo))
@@ -370,6 +382,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     @objc func retry() { stopServer(); DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { self.startServer() } }
     @objc func quit() { NSApp.terminate(nil) }
+    @objc func stopPlayback() { nativePlayer?.emitShortcut("stop") }
+    @objc func closeCurrentMedia() { nativePlayer?.emitShortcut("closeFile") }
+    @objc func prevItem() { nativePlayer?.emitShortcut("prevItem") }
+    @objc func nextItem() { nativePlayer?.emitShortcut("nextItem") }
+    @objc func togglePlaylist() { nativePlayer?.emitShortcut("togglePlaylist") }
+    @objc func takeScreenshot() { nativePlayer?.emitShortcut("screenshot") }
+    @objc func showMediaInfo() { nativePlayer?.emitShortcut("showMediaInfo") }
+    @objc func togglePip() { nativePlayer?.emitShortcut("pip") }
+    @objc func showHistory() { nativePlayer?.emitShortcut("showHistory") }
+    @objc func showMenu() { nativePlayer?.emitShortcut("showMenu") }
     @objc func hide() { NSApp.hide(nil) }
     @objc func home() { webView.load(URLRequest(url: DesktopPolicy.baseURL)) }
     @objc func back() { webView.goBack() }
