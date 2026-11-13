@@ -148,12 +148,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let play = submenu("播放")
         add(play, "停止播放", #selector(stopPlayback), ".")
         add(play, "关闭当前媒体", #selector(closeCurrentMedia), "w")
+        add(play, "定位到开头", #selector(jumpToBegin), "0")
         add(play, "上一项", #selector(prevItem), "\u{2190}")
         add(play, "下一项", #selector(nextItem), "\u{2192}")
+        add(play, "首项", #selector(firstItem))
+        add(play, "末项", #selector(lastItem))
+        add(play, "上一章", #selector(prevChapter), "\u{2190}", [.command, .control])
+        add(play, "下一章", #selector(nextChapter), "\u{2192}", [.command, .control])
         add(play, "显示/隐藏播放列表", #selector(togglePlaylist), "l")
+        play.addItem(.separator())
+        add(play, "快进一帧", #selector(frameStep), "f", [.command, .control])
+        add(play, "快退一帧", #selector(frameBackStep), "f", [.command, .shift, .control])
+        add(play, "设 A 点", #selector(setLoopA), "a", [.command, .shift])
+        add(play, "设 B 点", #selector(setLoopB), "b", [.command, .shift])
+        add(play, "清除 A–B 循环", #selector(clearABLoop), "x", [.command, .shift])
+        add(play, "添加书签", #selector(addBookmark), "b")
+        add(play, "编辑书签", #selector(editBookmark))
+        play.addItem(.separator())
+        add(play, "加快倍速", #selector(speedUp), "=", [.command])
+        add(play, "减慢倍速", #selector(speedDown), "-", [.command])
+        add(play, "恢复倍速", #selector(speedReset))
+        add(play, "静音", #selector(toggleMute), "m", [.command])
+        add(play, "画面比例循环", #selector(aspectCycle))
+        add(play, "下一音轨", #selector(cycleAudioTrack), "1", [.command, .shift])
+        add(play, "下一字幕轨", #selector(cycleSubtitleTrack), "2", [.command, .shift])
+        add(play, "切换字幕显隐", #selector(toggleSubtitle), "3", [.command, .shift])
+        add(play, "音频延迟 +0.5s", #selector(audioDelayPlus), "+", [.command, .option])
+        add(play, "音频延迟 −0.5s", #selector(audioDelayMinus), "-", [.command, .option])
+        add(play, "音频延迟 重置", #selector(audioDelayReset))
+        add(play, "字幕延迟 +0.5s", #selector(subtitleDelayPlus), "+", [.command, .option, .shift])
+        add(play, "字幕延迟 −0.5s", #selector(subtitleDelayMinus), "-", [.command, .option, .shift])
+        add(play, "字幕延迟 重置", #selector(subtitleDelayReset))
+        play.addItem(.separator())
         add(play, "截图", #selector(takeScreenshot), "s")
+        add(play, "制作 GIF", #selector(toggleGif), "g", [.command, .shift])
+        add(play, "录制片段", #selector(toggleRecord), "r", [.command, .shift])
+        add(play, "生成海报", #selector(capturePoster))
+        add(play, "导入字幕", #selector(loadSubtitle), "t", [.command, .shift])
         add(play, "媒体信息", #selector(showMediaInfo), "i")
+        add(play, "音频设置", #selector(showAudioSettings))
+        add(play, "字幕设置", #selector(showSubtitleSettings))
+        add(play, "画面校准", #selector(showVideoSettings))
         add(play, "画中画", #selector(togglePip), "p", [.command, .shift])
+        add(play, "窗口置顶", #selector(toggleAlwaysOnTop), "t", [.command, .option])
         add(play, "观看历史", #selector(showHistory), "o", [.command, .shift])
         add(play, "播放器菜单", #selector(showMenu), ",")
         let view = submenu("浏览")
@@ -392,6 +429,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     @objc func togglePip() { nativePlayer?.emitShortcut("pip") }
     @objc func showHistory() { nativePlayer?.emitShortcut("showHistory") }
     @objc func showMenu() { nativePlayer?.emitShortcut("showMenu") }
+    @objc func jumpToBegin() { nativePlayer?.emitShortcut("jumpToBegin") }
+    @objc func firstItem() { nativePlayer?.emitShortcut("firstItem") }
+    @objc func lastItem() { nativePlayer?.emitShortcut("lastItem") }
+    @objc func prevChapter() { nativePlayer?.emitShortcut("prevChapter") }
+    @objc func nextChapter() { nativePlayer?.emitShortcut("nextChapter") }
+    @objc func frameStep() { nativePlayer?.emitShortcut("frameStep") }
+    @objc func frameBackStep() { nativePlayer?.emitShortcut("frameBackStep") }
+    @objc func setLoopA() { nativePlayer?.emitShortcut("abLoopA") }
+    @objc func setLoopB() { nativePlayer?.emitShortcut("abLoopB") }
+    @objc func clearABLoop() { nativePlayer?.emitShortcut("clearABLoop") }
+    @objc func addBookmark() { nativePlayer?.emitShortcut("addBookmark") }
+    @objc func editBookmark() { nativePlayer?.emitShortcut("editBookmark") }
+    @objc func speedUp() { nativePlayer?.emitShortcut("speedUp") }
+    @objc func speedDown() { nativePlayer?.emitShortcut("speedDown") }
+    @objc func speedReset() { nativePlayer?.emitShortcut("speedReset") }
+    @objc func toggleMute() { nativePlayer?.emitShortcut("mute") }
+    @objc func aspectCycle() { nativePlayer?.emitShortcut("aspectCycle") }
+    @objc func cycleAudioTrack() { nativePlayer?.emitShortcut("cycleAudioTrack") }
+    @objc func cycleSubtitleTrack() { nativePlayer?.emitShortcut("cycleSubtitleTrack") }
+    @objc func toggleSubtitle() { nativePlayer?.emitShortcut("toggleSubtitle") }
+    @objc func audioDelayPlus() { nativePlayer?.emitShortcut("audioDelayPlus") }
+    @objc func audioDelayMinus() { nativePlayer?.emitShortcut("audioDelayMinus") }
+    @objc func audioDelayReset() { nativePlayer?.emitShortcut("audioDelayReset") }
+    @objc func subtitleDelayPlus() { nativePlayer?.emitShortcut("subtitleDelayPlus") }
+    @objc func subtitleDelayMinus() { nativePlayer?.emitShortcut("subtitleDelayMinus") }
+    @objc func subtitleDelayReset() { nativePlayer?.emitShortcut("subtitleDelayReset") }
+    @objc func toggleGif() { nativePlayer?.emitShortcut("toggleGif") }
+    @objc func toggleRecord() { nativePlayer?.emitShortcut("toggleRecord") }
+    @objc func capturePoster() { nativePlayer?.emitShortcut("capturePoster") }
+    @objc func loadSubtitle() { nativePlayer?.emitShortcut("loadSubtitle") }
+    @objc func showAudioSettings() { nativePlayer?.emitShortcut("showAudioSettings") }
+    @objc func showSubtitleSettings() { nativePlayer?.emitShortcut("showSubtitleSettings") }
+    @objc func showVideoSettings() { nativePlayer?.emitShortcut("showVideoSettings") }
+    @objc func toggleAlwaysOnTop() { nativePlayer?.emitShortcut("alwaysOnTop") }
     @objc func hide() { NSApp.hide(nil) }
     @objc func home() { webView.load(URLRequest(url: DesktopPolicy.baseURL)) }
     @objc func back() { webView.goBack() }

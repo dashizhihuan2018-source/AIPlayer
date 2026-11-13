@@ -42,12 +42,14 @@ import {
   adjustCurrentAfterMove,
   adjustCurrentAfterRemove,
   captureResultMessage,
+  recordingResultMessage,
   clipVideoRect,
   consumeEndedEdge,
   parseNativeCapabilities,
   playbackMode,
   selectAB,
   supportsNativeCommand,
+  supportsMediaTool,
   userFacingError,
   isSafeMediaId,
   parseWorkspaceMemory,
@@ -62,6 +64,10 @@ import {
   resolveLoadSelection,
   queueStepIndex,
   canRequestFullscreen,
+  chapterJumpIndex,
+  cycleTrackId,
+  stepDelayValue,
+  stepSpeedValue,
   type DesktopCapabilities,
   type SavedBookmark,
   type WorkspaceMemory,
@@ -171,6 +177,14 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
   const [historyOpen, setHistoryOpen] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [status, setStatus] = useState('');
+
+  // 状态提示（截屏成功、片头/片尾跳过、操作失败等）5 秒后自动隐藏，保持播放画面干净；
+  // 提示条上的 × 仍可立即关闭。新提示覆盖旧提示时重新计时。
+  useEffect(() => {
+    if (!status) return;
+    const timer = setTimeout(() => setStatus(''), 5_000);
+    return () => clearTimeout(timer);
+  }, [status]);
   const [browserSrc, setBrowserSrc] = useState('');
   const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
   const [bookmarks, setBookmarks] = useState<SavedBookmark[]>([]);
@@ -731,10 +745,11 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
 
   const [pendingMediaInfo, setPendingMediaInfo] = useState(false);
 
-  // 原生「播放」菜单快捷键（对齐 OmniPlayer 风格：⌘. 停止 / ⌘W 关闭当前 / ⌘←/→ 上下一项 /
-  // ⌘L 播放列表 / ⌘S 截图 / ⌘I 媒体信息 / ⌘⇧P 画中画 / ⌘⇧O 观看历史 / ⌘, 菜单）由 AppKit
-  // 菜单消费按键后经 menuShortcut 事件路由到这里执行；播放队列与面板状态都在 Web 侧。
+  // 原生「播放」菜单快捷键由 AppKit 菜单消费按键后经 menuShortcut 事件路由到这里执行；
+  // 播放队列、轨道、章节、GIF/录制等状态都在 Web 侧。V1.1.8 起覆盖 OmniPlayer 全量可配置动作
+  // （定位/章节/帧步进、A/B、倍速、音/字幕轨道与延迟、GIF/录制片段/海报、书签、播放列表首/末项、置顶）。
   const handleMenuShortcut = useCallback((action: MenuShortcutAction) => {
+    const hasMedia = Boolean(currentItem);
     switch (action) {
       case 'stop':
         void runCommand('stop');
@@ -748,6 +763,15 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
         break;
       case 'nextItem':
         stepQueue(1);
+        break;
+      case 'firstItem':
+        if (!visibleQueue.length) break;
+        void loadItem(visibleQueue[0].item, visibleQueue[0].index);
+        break;
+      case 'lastItem':
+        if (!visibleQueue.length) break;
+        const last = visibleQueue[visibleQueue.length - 1];
+        void loadItem(last.item, last.index);
         break;
       case 'togglePlaylist': {
         const openNow = panel === 'queue' && !collapsed;
@@ -775,8 +799,188 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
       case 'showMenu':
         setMenuOpen(true);
         break;
+      // —— 定位与章节（对齐 OmniPlayer Jump to Begin / Next/Previous Chapter） ——
+      case 'jumpToBegin':
+        if (!supportsCommand('seek')) break;
+        void runCommand('seek', 0);
+        break;
+      case 'nextChapter':
+      case 'prevChapter': {
+        if (!supportsCommand('seek')) break;
+        const index = chapterJumpIndex(player.chapters, player.time, action === 'nextChapter' ? 1 : -1);
+        if (index === null) { setStatus(action === 'nextChapter' ? '已是最后一章' : '已是第一章'); break; }
+        void runCommand('seek', player.chapters[index].time);
+        break;
+      }
+      // —— 帧步进（对齐 OmniPlayer Next/Previous Frame；原生引擎命令，暂停时单帧推进） ——
+      case 'frameStep':
+      case 'frameBackStep': {
+        if (!supportsCommand(action)) { setStatus('当前播放模式不支持帧步进'); break; }
+        if (!player.paused) { void runCommand('pause', true); void runCommand(action); setStatus('已暂停并单帧推进'); }
+        else void runCommand(action);
+        break;
+      }
+      // —— A/B 循环（对齐 OmniPlayer Set Loop A / Loop B / Cancel Loop） ——
+      case 'abLoopA':
+      case 'abLoopB':
+        {
+          // 内联 setAB（原函数在组件后段声明，useCallback 体内不能引用）：校验后写入 A/B 循环
+          const selection = selectAB(abA, abB, action === 'abLoopA' ? 'a' : 'b', player.time);
+          if (selection.error) { setStatus(selection.error); break; }
+          setAbA(selection.a);
+          setAbB(selection.b);
+          void runCommand(action === 'abLoopA' ? 'abLoopA' : 'abLoopB', player.time);
+        }
+        break;
+      case 'clearABLoop':
+        setAbA(null);
+        setAbB(null);
+        void runCommand('abLoopA', null);
+        void runCommand('abLoopB', null);
+        break;
+      // —— 书签（对齐 OmniPlayer Add Bookmark；编辑走“章节与书签”面板，面板内逐项可改） ——
+      case 'addBookmark':
+        if (!hasMedia) break;
+        setBookmarks((value) => [...value, { id: `bm_${Date.now().toString(36)}`, label: `书签 ${value.length + 1}`, time: Math.round(player.time * 10) / 10 }].sort((a, b) => a.time - b.time));
+        setStatus(`已添加书签 ${formatTimecode(player.time)}`);
+        break;
+      case 'editBookmark':
+        setPanel('picture');
+        setCollapsed(false);
+        break;
+      // —— 倍速（对齐 OmniPlayer Increase/Reset Playback Speed；档位阶梯 0.25x–4x） ——
+      case 'speedUp':
+      case 'speedDown':
+      case 'speedReset': {
+        if (!supportsCommand('speed')) break;
+        const next = action === 'speedReset' ? 1 : stepSpeedValue(preferredSpeed, action === 'speedUp' ? 1 : -1);
+        setPreferredSpeed(next);
+        void runCommand('speed', next);
+        break;
+      }
+      // —— 音/字幕轨道（对齐 OmniPlayer 轨道切换；-1 = 无字幕） ——
+      case 'cycleAudioTrack': {
+        const target = cycleTrackId(audioTracks, 1, false);
+        if (target === null) break;
+        void runCommand('audioTrack', target);
+        break;
+      }
+      case 'cycleSubtitleTrack': {
+        const target = cycleTrackId(subtitleTracks, 1, true);
+        if (target === null) break;
+        void runCommand('subtitleTrack', target);
+        break;
+      }
+      // —— 音/字幕延迟（±0.5s 步进、±10s 上限，与设置面板一致） ——
+      case 'audioDelayPlus':
+      case 'audioDelayMinus':
+      case 'audioDelayReset': {
+        if (!supportsCommand('audioDelay')) break;
+        const next = action === 'audioDelayReset' ? 0 : stepDelayValue(player.audioDelay, action === 'audioDelayPlus' ? 0.5 : -0.5);
+        setPlayer((state) => ({ ...state, audioDelay: next }));
+        void runCommand('audioDelay', next);
+        break;
+      }
+      case 'subtitleDelayPlus':
+      case 'subtitleDelayMinus':
+      case 'subtitleDelayReset': {
+        if (!supportsCommand('subtitleDelay')) break;
+        const next = action === 'subtitleDelayReset' ? 0 : stepDelayValue(player.subtitleDelay, action === 'subtitleDelayPlus' ? 0.5 : -0.5);
+        setPlayer((state) => ({ ...state, subtitleDelay: next }));
+        void runCommand('subtitleDelay', next);
+        break;
+      }
+      // —— 面板入口（对齐 OmniPlayer Audio/Subtitle Show Settings） ——
+      case 'showAudioSettings':
+        setPanel('audio');
+        setCollapsed(false);
+        break;
+      case 'showSubtitleSettings':
+        setPanel('subtitle');
+        setCollapsed(false);
+        break;
+      // —— 字幕显隐（对齐 OmniPlayer Subtitle.ShowHide：无字幕 ⇄ 首个字幕轨） ——
+      case 'toggleSubtitle': {
+        if (!supportsCommand('subtitleTrack')) break;
+        const selectedSub = subtitleTracks.find((track) => track.selected);
+        void runCommand('subtitleTrack', selectedSub ? -1 : (subtitleTracks[0]?.id ?? -1));
+        break;
+      }
+      // —— 导入字幕（对齐 OmniPlayer Load Subtitle）：浏览器选文件，原生走 importSubtitle ——
+      case 'loadSubtitle':
+        if (browserMode) { subtitleInputRef.current?.click(); break; }
+        if (!supportsFeature('importSubtitle')) { setStatus('当前播放模式不支持导入字幕'); break; }
+        void nativeRequest<NativeState | { state?: NativeState }>('importSubtitle')
+          .then((result) => {
+            const state = 'state' in result && result.state ? result.state : result;
+            if ('tracks' in state) acceptPlayerState(state as NativeState);
+          })
+          .catch((error) => setStatus(userFacingError(error, '字幕导入失败')));
+        break;
+      // —— 媒体工具（对齐 OmniPlayer Gif / Record / Poster；各动作按自身引擎命令门控） ——
+      case 'toggleGif':
+        if (!supportsMediaTool(capabilities, 'gifStart')) { setStatus('当前播放模式不支持该操作'); break; }
+        {
+          const capturing = player.gifCapturing || player.gifExporting === true;
+          void nativeRequest<unknown>(capturing ? 'gifStop' : 'gifStart', capturing ? {} : { fps: 20, maximumWidth: 640 })
+            .catch((error) => setStatus(userFacingError(error, 'GIF 操作失败，请重试')));
+        }
+        break;
+      case 'toggleRecord':
+        if (!supportsMediaTool(capabilities, 'recordStart')) { setStatus('当前播放模式不支持该操作'); break; }
+        {
+          const started = recording;
+          void nativeRequest<unknown>(started ? 'recordStop' : 'recordStart')
+            .then((result) => { if (result) setStatus(recordingResultMessage(started ? 'recordStop' : 'recordStart', result)); })
+            .catch((error) => setStatus(userFacingError(error, '录制片段失败，请重试')));
+        }
+        break;
+      case 'capturePoster':
+        if (!supportsMediaTool(capabilities, 'capturePoster')) { setStatus('当前播放模式不支持该操作'); break; }
+        void nativeRequest<unknown>('capturePoster', hasMedia && currentItem?.name ? { title: currentItem.name } : {})
+          .then((result) => { const message = captureResultMessage('poster', result); if (message) setStatus(message); })
+          .catch((error) => setStatus(userFacingError(error, '海报生成失败，请重试')));
+        break;
+      case 'openGifFolder':
+        if (!supportsMediaTool(capabilities, 'openGifFolder')) { setStatus('当前播放模式不支持该操作'); break; }
+        void nativeRequest<unknown>('openGifFolder').catch((error) => setStatus(userFacingError(error, '无法打开 GIF 成果文件夹')));
+        break;
+      // —— 静音（对齐 OmniPlayer Mute；M 键在 onKey 已有，此处供菜单栏触发） ——
+      case 'mute':
+        if (!supportsCommand('mute')) break;
+        transport.mute.update((value) => !value);
+        break;
+      // —— 画面比例循环（对齐 OmniPlayer Fit Screen：原始 → 裁切 → 拉伸 → 16:9 → 4:3） ——
+      case 'aspectCycle': {
+        if (!supportsCommand('aspect')) break;
+        const ladder = ['default', 'cover', 'fill', '16:9', '4:3'];
+        const current = ladder.indexOf(aspect) === -1 ? 0 : ladder.indexOf(aspect) + 1;
+        const nextAspect = ladder[current % ladder.length];
+        setAspect(nextAspect);
+        void runCommand('aspect', nextAspect);
+        break;
+      }
+      // —— 画面校准面板（对齐 OmniPlayer Video.Show Settings） ——
+      case 'showVideoSettings':
+        setPanel('picture');
+        setCollapsed(false);
+        break;
+      // —— 窗口置顶（对齐 OmniPlayer Always on Top；PiP/全屏状态下由原生侧拒绝并提示） ——
+      case 'alwaysOnTop': {
+        if (!nativeReady || !capabilities?.commands.includes('alwaysOnTop')) { setStatus('当前播放模式不支持窗口置顶'); break; }
+        const enableNext = !alwaysOnTopRef.current;
+        void nativeRequest<unknown>('alwaysOnTop', { enabled: enableNext })
+          .then((result) => {
+            // 原生 setAlwaysOnTop 在响应前已更新 windowState 字段，直接回读
+            const record = (result ?? null) as { alwaysOnTop?: unknown } | null;
+            if (record && typeof record.alwaysOnTop === 'boolean') alwaysOnTopRef.current = record.alwaysOnTop;
+          })
+          .catch((error) => setStatus(userFacingError(error, '窗口置顶失败，请重试')));
+        break;
+      }
     }
-  }, [capabilities, collapsed, nativeReady, panel, runCommand, stepQueue, supportsFeature, togglePictureInPicture]);
+  }, [acceptPlayerState, aspect, audioTracks, abA, abB, browserMode, capabilities, collapsed, currentItem, loadItem, nativeReady, panel, preferredSpeed, player, recording, runCommand, stepQueue, subtitleTracks, supportsCommand, supportsFeature, togglePictureInPicture, visibleQueue, setPlayer, setAspect, transport]);
+  const alwaysOnTopRef = useRef(false);
   const handleMenuShortcutRef = useRef(handleMenuShortcut);
   useEffect(() => { handleMenuShortcutRef.current = handleMenuShortcut; }, [handleMenuShortcut]);
 

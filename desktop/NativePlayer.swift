@@ -538,6 +538,7 @@ final class NativePlayerController {
     private var mediaTools: NativeMediaTools!
     private let openMediaQueue = NativeOpenMediaQueue()
     private var pictureInPictureState: (frame: NSRect, minimumSize: NSSize, level: NSWindow.Level, collectionBehavior: NSWindow.CollectionBehavior)?
+    private var alwaysOnTop = UserDefaults.standard.bool(forKey: "AIPlayer.alwaysOnTop")
     private var windowTransitionGate = NativeWindowTransitionGate()
     private let windowFailureDelegate = NativeWindowFailureDelegate()
     private var windowObservers: [NSObjectProtocol] = []
@@ -774,6 +775,9 @@ final class NativePlayerController {
                 completion(.success(["ready": false]))
             case .pictureInPicture(let enabled):
                 completion(.success(["active": try setPictureInPicture(enabled)]))
+            case .alwaysOnTop(let enabled):
+                try setAlwaysOnTop(enabled)
+                completion(.success(windowState()))
             case .getWindowState:
                 completion(.success(windowState()))
             }
@@ -1330,10 +1334,22 @@ final class NativePlayerController {
     private func windowState() -> [String: Any] {
         [
             "fullscreen": window?.styleMask.contains(.fullScreen) ?? false,
-            "pictureInPicture": pictureInPictureState != nil
+            "pictureInPicture": pictureInPictureState != nil,
+            "alwaysOnTop": alwaysOnTop
         ]
     }
 
+    /// 窗口置顶（对齐 OmniPlayer Always on Top）：小窗模式（PiP）下 level 由小窗自己管理，置顶只在普通窗口下生效；
+    /// 全屏时 macOS 本身置顶，不改变状态。
+    private func setAlwaysOnTop(_ enabled: Bool) throws {
+        guard let window else { throw MediaToolError.message("播放器窗口不可用") }
+        guard pictureInPictureState == nil else { throw MediaToolError.message("小窗模式下无法设置窗口置顶") }
+        guard !window.styleMask.contains(.fullScreen) else { throw MediaToolError.message("全屏时窗口已在最前，无需置顶") }
+        alwaysOnTop = enabled
+        UserDefaults.standard.set(enabled, forKey: "AIPlayer.alwaysOnTop")
+        window.level = enabled ? .floating : .normal
+        emitWindowState()
+    }
     private func emitWindowState() {
         var detail = windowState()
         detail["event"] = "windowState"
@@ -1344,7 +1360,7 @@ final class NativePlayerController {
         [
             "available": engine.rendererReady,
             "engine": engine.string("mpv-version", fallback: "libmpv"),
-            "commands": ["pause", "seek", "volume", "mute", "speed", "audioTrack", "subtitleTrack", "subtitleDelay", "audioDelay", "aspect", "rotation", "brightness", "contrast", "saturation", "gamma", "hue", "abLoopA", "abLoopB", "loop", "deinterlace", "hwdec", "frameStep", "frameBackStep", "stop", "ocr", "captureGif", "gifStart", "gifStop", "gifCancel", "openGifFolder", "capturePoster", "recordStart", "recordStop", "mediaReady", "mediaNotReady", "pictureInPicture", "getWindowState"],
+            "commands": ["pause", "seek", "volume", "mute", "speed", "audioTrack", "subtitleTrack", "subtitleDelay", "audioDelay", "aspect", "rotation", "brightness", "contrast", "saturation", "gamma", "hue", "abLoopA", "abLoopB", "loop", "deinterlace", "hwdec", "frameStep", "frameBackStep", "stop", "ocr", "captureGif", "gifStart", "gifStop", "gifCancel", "openGifFolder", "capturePoster", "recordStart", "recordStop", "mediaReady", "mediaNotReady", "pictureInPicture", "alwaysOnTop", "getWindowState"],
             "openFiles": true,
             "importSubtitle": true,
             "screenshot": true,

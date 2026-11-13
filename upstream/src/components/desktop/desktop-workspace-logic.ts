@@ -21,7 +21,7 @@ export type QueueViewOptions = { query: string; kind: 'all' | 'local' | 'url'; s
 export type PlayerPreferences = { speed: number; seekStep: number; pauseWhenHidden: boolean };
 export type LoadSelection = { currentIndex: number; endedLatched: boolean };
 export type LoadRequestToken = { request: number; generation: number };
-export type DesktopWindowState = { fullscreen: boolean; pictureInPicture: boolean; transitioning: boolean };
+export type DesktopWindowState = { fullscreen: boolean; pictureInPicture: boolean; transitioning: boolean; alwaysOnTop?: boolean };
 export type SleepTimerState = { timer: ReturnType<typeof setTimeout> | null; minutes: number; atEnd: boolean };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -174,7 +174,8 @@ export function parseWindowState(value: unknown): DesktopWindowState | null {
   if (!isRecord(value) || (value.event !== undefined && value.event !== 'windowState')) return null;
   if (typeof value.fullscreen !== 'boolean' || typeof value.pictureInPicture !== 'boolean') return null;
   if (value.transitioning !== undefined && typeof value.transitioning !== 'boolean') return null;
-  return { fullscreen: value.fullscreen, pictureInPicture: value.pictureInPicture, transitioning: value.transitioning ?? false };
+  if (value.alwaysOnTop !== undefined && typeof value.alwaysOnTop !== 'boolean') return null;
+  return { fullscreen: value.fullscreen, pictureInPicture: value.pictureInPicture, transitioning: value.transitioning ?? false, alwaysOnTop: value.alwaysOnTop ?? false };
 }
 
 export function canRequestFullscreen(nativeReady: boolean, supported: boolean, transitioning: boolean): boolean {
@@ -251,12 +252,73 @@ export function parseOpenMediaEvent(value: unknown): MediaItem[] | null {
   return items;
 }
 
-/** 原生命单播放快捷键（⌘. 停止、⌘W 关闭当前、⌘←/→ 上/下一项、⌘L 播放列表、⌘S 截图等）
+/** 原生命单播放快捷键（⌘. 停止、⌘W 关闭当前、⌘←/→ 上/下一项、⌘L 播放列表、⌘S 截图等；
+ * V1.1.8 起对齐 OmniPlayer 全量可配置动作：定位/章节/帧步进、A/B 循环、倍速、音/字幕轨道与延迟、
+ * GIF/录制片段/海报、书签、播放列表首/末项、字幕加载与面板、窗口置顶；未覆盖项（新建窗口、在线字幕搜索）无真实能力）
  * 由 AppKit 菜单消费按键后经 aiplayer:native 事件路由到 Web 层执行；队列与面板状态都在 Web 侧。 */
-const MENU_SHORTCUT_ACTIONS = ['stop', 'closeFile', 'prevItem', 'nextItem', 'togglePlaylist', 'screenshot', 'showMediaInfo', 'pip', 'showHistory', 'showMenu'] as const;
+const MENU_SHORTCUT_ACTIONS = [
+  'stop', 'closeFile', 'prevItem', 'nextItem', 'togglePlaylist', 'screenshot', 'showMediaInfo', 'pip', 'showHistory', 'showMenu',
+  'jumpToBegin', 'nextChapter', 'prevChapter', 'frameStep', 'frameBackStep',
+  'abLoopA', 'abLoopB', 'clearABLoop', 'addBookmark', 'editBookmark',
+  'speedUp', 'speedDown', 'speedReset',
+  'toggleGif', 'toggleRecord', 'capturePoster', 'openGifFolder',
+  'cycleAudioTrack', 'cycleSubtitleTrack', 'toggleSubtitle', 'loadSubtitle',
+  'audioDelayPlus', 'audioDelayMinus', 'audioDelayReset',
+  'subtitleDelayPlus', 'subtitleDelayMinus', 'subtitleDelayReset',
+  'firstItem', 'lastItem', 'showAudioSettings', 'showSubtitleSettings',
+  'alwaysOnTop',
+  'mute', 'aspectCycle', 'showVideoSettings',
+] as const;
 export type MenuShortcutAction = (typeof MENU_SHORTCUT_ACTIONS)[number];
 
 export function parseMenuShortcutEvent(value: unknown): MenuShortcutAction | null {
   if (!isRecord(value) || value.event !== 'menuShortcut' || typeof value.action !== 'string') return null;
   return (MENU_SHORTCUT_ACTIONS as readonly string[]).includes(value.action) ? value.action as MenuShortcutAction : null;
+}
+
+/** 倍速步进（对齐 OmniPlayer Increase/Reset Playback Speed）：沿固定档位阶梯上下各移一档。 */
+export const PLAYBACK_RATE_LADDER = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4] as const;
+
+export function stepSpeedValue(current: number, direction: 1 | -1): number {
+  const ladder = [...PLAYBACK_RATE_LADDER];
+  let index = ladder.findIndex((rate) => Math.abs(rate - current) < 0.01);
+  if (index === -1) {
+    // 不在档位上（如手动改过倍速）时先吸附到最近档，再按方向步进，避免回落到 1x
+    index = ladder.reduce((best, rate, i) => (Math.abs(rate - current) < Math.abs(ladder[best] - current) ? i : best), 0);
+  }
+  const next = Math.min(ladder.length - 1, Math.max(0, index + direction));
+  return ladder[next];
+}
+
+/** 章节跳转（对齐 OmniPlayer Next/Previous Chapter）：后一章取第一个时间点晚于当前 +0.25s 的章节；
+ * 前一章取最后一个早于当前 -0.5s 的章节；越界返回 null（不循环、不动作）。 */
+export function chapterJumpIndex(chapters: Array<{ time: number }>, time: number, direction: 1 | -1): number | null {
+  if (!chapters.length || !Number.isFinite(time)) return null;
+  if (direction === 1) {
+    const next = chapters.findIndex((chapter) => chapter.time > time + 0.25);
+    return next === -1 ? null : next;
+  }
+  for (let index = chapters.length - 1; index >= 0; index -= 1) {
+    if (chapters[index].time < time - 0.5) return index;
+  }
+  return null;
+}
+
+/** 轨道循环切换（对齐 OmniPlayer 轨道切换语义）：沿轨道表上下移动；
+ * allowNone 时末尾追加“无”（-1），允许切到无字幕。仅一条轨道且不允许“无”时不动作。 */
+export function cycleTrackId(tracks: Array<{ id: number; selected: boolean }>, direction: 1 | -1, allowNone = false): number | null {
+  const list: number[] = allowNone ? [...tracks.map((track) => track.id), -1] : [...tracks.map((track) => track.id)];
+  if (list.length < 2) return null;
+  const selected = tracks.find((track) => track.selected)?.id;
+  // 没有轨道被选中时：无论方向都先选第一条实际轨道（"无字幕" -1 只能作为显式终点，不作为起步）
+  if (selected === undefined) return list[0];
+  const currentIndex = selected === -1 && allowNone ? list.length - 1 : list.indexOf(selected);
+  const step = direction === 1 ? 1 : list.length - 1;
+  return list[(((currentIndex % list.length) + list.length) % list.length + step) % list.length];
+}
+
+/** 音/字幕延迟步进（对齐 OmniPlayer Audio/Subtitle Delay +/-）：±0.5s 步进、±10s 上限（与设置面板 RangeField 一致）。 */
+export function stepDelayValue(current: number, delta: number, limit = 10): number {
+  const next = current + delta;
+  return Math.round(Math.max(-limit, Math.min(limit, next)) * 10) / 10;
 }

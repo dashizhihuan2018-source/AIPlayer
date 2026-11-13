@@ -78,6 +78,7 @@ enum ValidatedNativeRequest: Equatable {
     case mediaReady
     case mediaNotReady
     case pictureInPicture(Bool)
+    case alwaysOnTop(Bool)
     case getWindowState
     case keepAwake(Bool)
 }
@@ -134,6 +135,9 @@ enum NativeBridgePolicy {
         case "pictureInPicture":
             guard Set(args.keys) == ["enabled"] else { throw invalidValue(command) }
             return .pictureInPicture(try requiredBool(args["enabled"], named: "enabled"))
+        case "alwaysOnTop":
+            guard Set(args.keys) == ["enabled"] else { throw invalidValue(command) }
+            return .alwaysOnTop(try requiredBool(args["enabled"], named: "enabled"))
         case "captureGif":
             guard Set(args.keys) == ["duration", "fps"] else { throw invalidValue(command) }
             return .captureGIF(

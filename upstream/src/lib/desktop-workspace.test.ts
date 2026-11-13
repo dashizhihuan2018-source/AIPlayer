@@ -27,6 +27,10 @@ import {
   replaceSleepTimer,
   queueStepIndex,
   canRequestFullscreen,
+  stepSpeedValue,
+  chapterJumpIndex,
+  cycleTrackId,
+  stepDelayValue,
 } from '@/components/desktop/desktop-workspace-logic';
 
 afterEach(() => vi.useRealTimers());
@@ -210,13 +214,65 @@ describe('desktop workspace shell', () => {
   });
 
   it('routes only the known native menu shortcuts to the web layer', () => {
-    for (const action of ['stop', 'closeFile', 'prevItem', 'nextItem', 'togglePlaylist', 'screenshot', 'showMediaInfo', 'pip', 'showHistory', 'showMenu']) {
+    // V1.1.8 起全量对齐 OmniPlayer 可配置动作；白名单在逻辑层严格校验
+    for (const action of [
+      'stop', 'closeFile', 'prevItem', 'nextItem', 'togglePlaylist', 'screenshot', 'showMediaInfo', 'pip', 'showHistory', 'showMenu',
+      'jumpToBegin', 'nextChapter', 'prevChapter', 'frameStep', 'frameBackStep',
+      'abLoopA', 'abLoopB', 'clearABLoop', 'addBookmark', 'editBookmark',
+      'speedUp', 'speedDown', 'speedReset',
+      'toggleGif', 'toggleRecord', 'capturePoster', 'openGifFolder',
+      'cycleAudioTrack', 'cycleSubtitleTrack', 'toggleSubtitle', 'loadSubtitle',
+      'audioDelayPlus', 'audioDelayMinus', 'audioDelayReset',
+      'subtitleDelayPlus', 'subtitleDelayMinus', 'subtitleDelayReset',
+      'firstItem', 'lastItem', 'showAudioSettings', 'showSubtitleSettings',
+      'alwaysOnTop', 'mute', 'aspectCycle', 'showVideoSettings',
+    ]) {
       expect(parseMenuShortcutEvent({ event: 'menuShortcut', action })).toBe(action);
     }
     expect(parseMenuShortcutEvent({ event: 'menuShortcut', action: 'openFile' })).toBeNull();
+    expect(parseMenuShortcutEvent({ event: 'menuShortcut', action: 'alwaysOnTopX' })).toBeNull();
     expect(parseMenuShortcutEvent({ event: 'menuShortcut' })).toBeNull();
     expect(parseMenuShortcutEvent({ event: 'state' })).toBeNull();
     expect(parseMenuShortcutEvent(null)).toBeNull();
+  });
+
+  it('steps playback speed along the fixed 0.25x–4x ladder', () => {
+    expect(stepSpeedValue(1, 1)).toBe(1.25);
+    expect(stepSpeedValue(1, -1)).toBe(0.75);
+    expect(stepSpeedValue(4, 1)).toBe(4);
+    expect(stepSpeedValue(0.25, -1)).toBe(0.25);
+    expect(stepSpeedValue(2.5, 1)).toBe(3);
+    expect(stepSpeedValue(0.6, 1)).toBe(0.75);
+  });
+
+  it('jumps to the next/previous chapter only when one exists in range', () => {
+    const chapters = [{ time: 0 }, { time: 10 }, { time: 30 }];
+    expect(chapterJumpIndex(chapters, 12, 1)).toBe(2);
+    expect(chapterJumpIndex(chapters, 31, 1)).toBeNull();
+    expect(chapterJumpIndex(chapters, 31, -1)).toBe(2);
+    expect(chapterJumpIndex(chapters, 2, -1)).toBe(0);
+    expect(chapterJumpIndex(chapters, 0, -1)).toBeNull();
+    expect(chapterJumpIndex([], 5, 1)).toBeNull();
+  });
+
+  it('cycles audio/subtitle tracks and allows "no subtitle" only when opted in', () => {
+    const audio = [{ id: 1, selected: true }, { id: 2, selected: false }];
+    expect(cycleTrackId(audio, 1, false)).toBe(2);
+    expect(cycleTrackId(audio, -1, false)).toBe(2);
+    const subs = [{ id: 3, selected: true }];
+    expect(cycleTrackId(subs, 1, false)).toBeNull();
+    expect(cycleTrackId(subs, 1, true)).toBe(-1);
+    // 2 元素列表 [3, -1]：从选中的 3 无论前后循环都到另一项（无字幕）
+    expect(cycleTrackId(subs, -1, true)).toBe(-1);
+    const noSub = [{ id: 3, selected: false }];
+    expect(cycleTrackId(noSub, -1, true)).toBe(3);
+  });
+
+  it('steps audio/subtitle delays in 0.5s increments clamped to ±10s', () => {
+    expect(stepDelayValue(0, 0.5)).toBe(0.5);
+    expect(stepDelayValue(9.8, 0.5)).toBe(10);
+    expect(stepDelayValue(-9.8, -0.5)).toBe(-10);
+    expect(stepDelayValue(0.4, -0.5)).toBe(-0.1);
   });
 
   it('gates native media tools against the exact advertised capability', () => {
@@ -242,8 +298,8 @@ describe('desktop workspace shell', () => {
   });
 
   it('validates native window state events and recording outcomes', () => {
-    expect(parseWindowState({ event: 'windowState', fullscreen: false, pictureInPicture: true })).toEqual({ fullscreen: false, pictureInPicture: true, transitioning: false });
-    expect(parseWindowState({ fullscreen: true, pictureInPicture: false, transitioning: true })).toEqual({ fullscreen: true, pictureInPicture: false, transitioning: true });
+    expect(parseWindowState({ event: 'windowState', fullscreen: false, pictureInPicture: true })).toEqual({ fullscreen: false, pictureInPicture: true, transitioning: false, alwaysOnTop: false });
+    expect(parseWindowState({ fullscreen: true, pictureInPicture: false, transitioning: true, alwaysOnTop: true })).toEqual({ fullscreen: true, pictureInPicture: false, transitioning: true, alwaysOnTop: true });
     expect(parseWindowState({ event: 'windowState', pictureInPicture: 'yes' })).toBeNull();
     expect(parseWindowState({ fullscreen: true, pictureInPicture: false, transitioning: 'yes' })).toBeNull();
     expect(recordingResultMessage('recordStart', { recording: false, saved: false })).toBe('已取消录制保存');
