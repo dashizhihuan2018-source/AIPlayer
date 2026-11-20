@@ -39,7 +39,9 @@ import Darwin
         assert(env["DEFAULT_SUBSCRIPTIONS"] == nil)
         assert(DesktopPolicy.canBind(port: 0))
         let fd = socket(AF_INET, SOCK_STREAM, 0)
-        defer { close(fd) }
+        precondition(fd >= 0)
+        var reuseAddress: Int32 = 1
+        precondition(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuseAddress, socklen_t(MemoryLayout<Int32>.size)) == 0)
         var address = sockaddr_in()
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         address.sin_family = sa_family_t(AF_INET)
@@ -47,12 +49,33 @@ import Darwin
         let bound = withUnsafePointer(to: &address) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
         }
-        assert(bound == 0)
+        precondition(bound == 0)
+        precondition(listen(fd, 1) == 0)
         var length = socklen_t(MemoryLayout<sockaddr_in>.size)
         _ = withUnsafeMutablePointer(to: &address) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &length) }
         }
-        assert(!DesktopPolicy.canBind(port: UInt16(bigEndian: address.sin_port)))
-        print("Desktop policy: 110 assertions passed")
+        let port = UInt16(bigEndian: address.sin_port)
+        precondition(!DesktopPolicy.canBind(port: port), "An active listener must block startup")
+
+        let client = socket(AF_INET, SOCK_STREAM, 0)
+        precondition(client >= 0)
+        let connected = withUnsafePointer(to: &address) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(client, $0, length) }
+        }
+        precondition(connected == 0)
+        let peer = accept(fd, nil, nil)
+        precondition(peer >= 0)
+        // Close from the server side first so the local port enters TIME_WAIT.
+        var byte: UInt8 = 0
+        precondition(shutdown(peer, SHUT_WR) == 0)
+        precondition(recv(client, &byte, 1, 0) == 0)
+        precondition(shutdown(client, SHUT_WR) == 0)
+        precondition(recv(peer, &byte, 1, 0) == 0)
+        close(peer)
+        close(client)
+        close(fd)
+        precondition(DesktopPolicy.canBind(port: port), "TIME_WAIT must allow an immediate restart")
+        print("Desktop policy assertions passed")
     }
 }

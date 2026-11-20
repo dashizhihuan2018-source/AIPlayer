@@ -57,6 +57,11 @@ enum DesktopPolicy {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { return false }
         defer { close(fd) }
+        // Match the server's socket so recently closed connections do not block a restart.
+        var reuseAddress: Int32 = 1
+        guard setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuseAddress, socklen_t(MemoryLayout<Int32>.size)) == 0 else {
+            return false
+        }
         var address = sockaddr_in()
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         address.sin_family = sa_family_t(AF_INET)
@@ -64,7 +69,7 @@ enum DesktopPolicy {
         address.sin_addr.s_addr = inet_addr("127.0.0.1")
         return withUnsafePointer(to: &address) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
+                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0 && listen(fd, 1) == 0
             }
         }
     }
