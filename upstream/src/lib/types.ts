@@ -42,6 +42,7 @@ export interface VideoInfo {
 
 export interface VideoDetail {
   episodes: string[];
+  episodeLabels?: string[];
   videoInfo: VideoInfo;
 }
 

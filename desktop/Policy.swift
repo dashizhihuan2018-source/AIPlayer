@@ -74,6 +74,42 @@ enum DesktopPolicy {
         }
     }
 
+    static func voicePlaybackPage(for url: URL) -> URL? {
+        guard var input = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              input.scheme == "nankong-aiplayer", input.host == "play", input.path.isEmpty,
+              input.port == nil, input.user == nil, input.password == nil, input.fragment == nil
+        else { return nil }
+        input.percentEncodedQuery = input.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%20")
+        guard let fields = input.queryItems else { return nil }
+        let accepted = Set(["title", "index", "episode"])
+        let names = Set(fields.map(\.name))
+        guard names.isSubset(of: accepted), names.count == fields.count else { return nil }
+
+        func text(_ name: String, limit: Int) -> String? {
+            guard let value = fields.first(where: { $0.name == name })?.value?
+                .trimmingCharacters(in: .whitespaces),
+                  !value.isEmpty, value.count <= limit,
+                  value.rangeOfCharacter(from: CharacterSet.controlCharacters.union(CharacterSet(charactersIn: "/\\<>"))) == nil
+            else { return nil }
+            return value
+        }
+        guard let title = text("title", limit: 100) else { return nil }
+        let index = text("index", limit: 4)
+        if names.contains("index") {
+            guard let index, index == "last" || index.range(of: "^[1-9][0-9]{0,3}$", options: .regularExpression) != nil else { return nil }
+        }
+        let episode = text("episode", limit: 60)
+        if names.contains("episode") && (episode == nil || index == nil) { return nil }
+
+        var route = URLComponents(url: baseURL.appendingPathComponent("discover"), resolvingAgainstBaseURL: false)
+        route?.queryItems = [URLQueryItem(name: "s", value: title), URLQueryItem(name: "voice", value: "1")]
+            + (index.map { [URLQueryItem(name: "index", value: $0)] } ?? [])
+            + (episode.map { [URLQueryItem(name: "episode", value: $0)] } ?? [])
+        let encodedQuery = route?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        route?.percentEncodedQuery = encodedQuery
+        return route?.url
+    }
+
     static func allowsNavigation(_ url: URL, port: Int = port) -> Bool {
         url.scheme == "http" && url.host == "127.0.0.1" && url.port == port
             && url.user == nil && url.password == nil

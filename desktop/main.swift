@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var quitting = false
     var password = ""
     var pendingExternalURLs: [URL] = []
+    var pendingVoicePlayback: URL?
+    var webSessionReady = false
     let files = FileManager.default
     let support = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/LibreTV Desktop")
     let logs = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/LibreTV Desktop")
@@ -210,6 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func startServer() {
+        webSessionReady = false
         guard DesktopPolicy.canBind(port: UInt16(DesktopPolicy.port)) else {
             fail("本机端口 \(DesktopPolicy.port) 已被其他程序占用。请释放该端口后重试；万能AI播放器不会关闭其他程序。")
             return
@@ -300,13 +303,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 }
                 group.notify(queue: .main) {
                     guard self.attempt == id, !self.quitting else { return }
-                    self.webView.load(URLRequest(url: DesktopPolicy.baseURL))
+                    self.webSessionReady = true
+                    self.webView.load(URLRequest(url: self.pendingVoicePlayback ?? DesktopPolicy.baseURL))
+                    self.pendingVoicePlayback = nil
                 }
             }
         }.resume()
     }
 
     func fail(_ message: String) {
+        webSessionReady = false
         statusView?.isHidden = false
         statusLabel?.stringValue = message
         progress?.stopAnimation(nil)
@@ -341,8 +347,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func applicationWillTerminate(_ notification: Notification) { try? logHandle?.close() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func application(_ application: NSApplication, open urls: [URL]) {
-        if let nativePlayer { nativePlayer.openFromSystem(urls) }
-        else { pendingExternalURLs.append(contentsOf: urls) }
+        let media = urls.filter(\.isFileURL)
+        if !media.isEmpty {
+            pendingVoicePlayback = nil
+            if let nativePlayer { nativePlayer.openFromSystem(media) }
+            else { pendingExternalURLs.append(contentsOf: media) }
+        }
+        guard let route = urls.compactMap(DesktopPolicy.voicePlaybackPage).last else { return }
+        pendingExternalURLs.removeAll()
+        if webSessionReady {
+            window.makeKeyAndOrderFront(nil)
+            webView.load(URLRequest(url: route))
+        } else {
+            pendingVoicePlayback = route
+        }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

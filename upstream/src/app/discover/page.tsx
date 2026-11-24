@@ -16,6 +16,9 @@ import { useToast } from '@/components/toast';
 import { EmptyState } from '@/components/states';
 import { Icon } from '@/components/icon';
 import { SiteFooter } from '@/components/site-footer';
+import { nativeAvailable } from '@/lib/native-player';
+import { useAuth } from '@/components/auth';
+import { voicePlaybackRoute } from '@/lib/voice-playback';
 
 /**
  * 首页：搜索（URL ?s= 驱动，可后退/分享）+ 豆瓣推荐。
@@ -36,6 +39,11 @@ function HomeContent() {
   const router = useRouter();
   const { toast } = useToast();
   const urlQuery = searchParams.get('s') || '';
+  const requestedPlayback = searchParams.get('voice') === '1';
+  const requestedEpisode = searchParams.get('episode') || undefined;
+  const requestedIndex = searchParams.get('index') || undefined;
+  const { verified } = useAuth();
+  const [voiceStatus, setVoiceStatus] = useState('');
   // 精确订阅所需字段（对齐 live 页的做法）：搜索流式期间逐源写健康度、
   // 打开设置抽屉/历史面板等无关 store 变化，都不应触发首页整树重渲染
   const customAPIs = useAppStore((s) => s.customAPIs);
@@ -114,6 +122,39 @@ function HomeContent() {
     // 5 分钟内从播放页返回时直接使用缓存，不重新搜索（服务端另有 60s 结果缓存兜底）
     staleTime: 300_000,
   });
+
+  useEffect(() => {
+    if (!requestedPlayback || !nativeAvailable() || !verified || !searchQuery.data) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    const available = searchQuery.data.list;
+    setVoiceStatus('正在核对点播请求…');
+    void (async () => {
+      const selectRoute = (items: SearchResultItem[]) => voicePlaybackRoute(
+        { title: urlQuery, episode: requestedEpisode, index: requestedIndex },
+        items, selectedSources, (id, source, signal) => api.detail(id, source, signal), signal,
+      );
+      let route = await selectRoute(available);
+      if (!route && requestedEpisode && !signal.aborted) {
+        // Some sources index the special under its subtitle instead of its series title.
+        const supplemental = await api.search(requestedEpisode.slice(0, 60), selectedSources, yellowFilter, { signal })
+          .catch(() => null);
+        if (supplemental?.list.length) route = await selectRoute([...available, ...supplemental.list]);
+      }
+      if (signal.aborted) return;
+      if (route) {
+        router.replace(route);
+      } else {
+        setVoiceStatus(requestedEpisode || requestedIndex
+          ? '当前片源未能确认指定剧集，可在下方查看候选。'
+          : '当前片源未能确认唯一的片名，可在下方查看候选。');
+        window.history.replaceState(null, '', '/discover?s=' + encodeURIComponent(urlQuery));
+      }
+    })().catch(() => {
+      if (!signal.aborted) setVoiceStatus('点播查询未完成，请检查片源。');
+    });
+    return () => controller.abort();
+  }, [requestedPlayback, requestedEpisode, requestedIndex, verified, searchQuery.data, selectedSources, yellowFilter, urlQuery, router]);
 
   // 最近搜索改为搜索框下拉（聚焦展开、按输入过滤），不再常驻首屏
   const searchHistory = useSearchHistory(input);
@@ -300,6 +341,8 @@ function HomeContent() {
                 )}
               </h2>
             </div>
+
+            {voiceStatus && <p role="status" className="mb-3 text-sm text-muted">{voiceStatus}</p>}
 
             {failures.length > 0 && (
               <div className="mb-3 text-xs bg-chip rounded-lg px-3 py-2 flex flex-wrap gap-x-3 gap-y-1">

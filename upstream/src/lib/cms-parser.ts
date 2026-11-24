@@ -52,7 +52,10 @@ export function parseSearchList(
  * 真实 m3u8 在后面的线路里，因此优先取包含 m3u8 直链的线路；均无 m3u8 时回退第一条。
  */
 export function extractEpisodesFromPlayUrl(playUrl: string): string[] {
-  if (!playUrl) return [];
+  return selectEpisodeGroup(playUrl).map((entry) => entry.url);
+}
+
+function selectEpisodeGroup(playUrl: string): { label: string; url: string }[] {
   const groups = playUrl
     .split('$$$')
     .map((group) =>
@@ -60,13 +63,13 @@ export function extractEpisodesFromPlayUrl(playUrl: string): string[] {
         .split('#')
         .map((ep) => {
           const parts = ep.split('$');
-          return parts.length > 1 ? parts[1] : '';
+          return { label: parts[0].trim(), url: parts[1] ?? '' };
         })
-        .filter((url) => url.startsWith('http://') || url.startsWith('https://'))
+        .filter(({ url }) => url.startsWith('http://') || url.startsWith('https://'))
     )
     .filter((eps) => eps.length > 0);
   if (groups.length === 0) return [];
-  return groups.find((eps) => eps.some((url) => url.includes('.m3u8'))) ?? groups[0];
+  return groups.find((eps) => eps.some(({ url }) => url.includes('.m3u8'))) ?? groups[0];
 }
 
 /** 从简介文本中兜底提取 m3u8 链接 */
@@ -86,12 +89,10 @@ export function parseDetail(
     throw new Error('获取到的详情内容无效');
   }
   const vod = d.list[0];
-  let episodes = extractEpisodesFromPlayUrl(String(vod.vod_play_url ?? ''));
-  if (episodes.length === 0) {
-    episodes = extractM3u8FromText(String(vod.vod_content ?? ''));
-  }
+  const selected = selectEpisodeGroup(String(vod.vod_play_url ?? ''));
   return {
-    episodes,
+    episodes: selected.length ? selected.map(({ url }) => url) : extractM3u8FromText(String(vod.vod_content ?? '')),
+    ...(selected.length ? { episodeLabels: selected.map(({ label }) => label) } : {}),
     videoInfo: {
       title: str(vod.vod_name),
       cover: str(vod.vod_pic),
