@@ -18,7 +18,7 @@ import { Icon } from '@/components/icon';
 import { SiteFooter } from '@/components/site-footer';
 import { nativeAvailable } from '@/lib/native-player';
 import { useAuth } from '@/components/auth';
-import { voicePlaybackRoute } from '@/lib/voice-playback';
+import { beginVoicePlayback, voicePlaybackRoutes } from '@/lib/voice-playback';
 
 /**
  * 首页：搜索（URL ?s= 驱动，可后退/分享）+ 豆瓣推荐。
@@ -130,20 +130,22 @@ function HomeContent() {
     const available = searchQuery.data.list;
     setVoiceStatus('正在核对点播请求…');
     void (async () => {
-      const selectRoute = (items: SearchResultItem[]) => voicePlaybackRoute(
+      const selectRoutes = (items: SearchResultItem[]) => voicePlaybackRoutes(
         { title: urlQuery, episode: requestedEpisode, index: requestedIndex },
         items, selectedSources, (id, source, signal) => api.detail(id, source, signal), signal,
       );
-      let route = await selectRoute(available);
-      if (!route && requestedEpisode && !signal.aborted) {
+      let routes = await selectRoutes(available);
+      if (routes.length < 2 && requestedEpisode && !signal.aborted) {
         // Some sources index the special under its subtitle instead of its series title.
         const supplemental = await api.search(requestedEpisode.slice(0, 60), selectedSources, yellowFilter, { signal })
           .catch(() => null);
-        if (supplemental?.list.length) route = await selectRoute([...available, ...supplemental.list]);
+        if (supplemental?.list.length) {
+          routes = await selectRoutes([...available, ...supplemental.list]);
+        }
       }
       if (signal.aborted) return;
-      if (route) {
-        router.replace(route);
+      if (routes.length) {
+        router.replace(beginVoicePlayback(routes));
       } else {
         setVoiceStatus(requestedEpisode || requestedIndex
           ? '当前片源未能确认指定剧集，可在下方查看候选。'

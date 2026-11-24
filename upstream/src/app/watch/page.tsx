@@ -29,6 +29,7 @@ import {
   db,
 } from '@/lib/db';
 import { isDirectVideoFile } from '@/lib/media-source';
+import { nextVoicePlayback, voiceRequestParam } from '@/lib/voice-playback';
 import '../desktop.css';
 import './watch-player.css';
 
@@ -65,6 +66,16 @@ function WatchContent() {
     url: searchParams.get('sourceUrl') || undefined,
     detail: searchParams.get('detail') || undefined,
   });
+  const switchingFrom = useRef<string | null>(null);
+  const tryNextVoiceSource = useCallback(() => {
+    const current = searchParams.toString();
+    if (switchingFrom.current === current) return true;
+    const next = nextVoicePlayback(new URLSearchParams(current));
+    if (!next) return false;
+    switchingFrom.current = current;
+    router.replace(next, { scroll: false });
+    return true;
+  }, [router, searchParams]);
 
   // 详情查询：无 id（纯直连链接分享）时跳过
   const detailQuery = useQuery({
@@ -72,7 +83,13 @@ function WatchContent() {
     queryFn: ({ signal }) => api.detail(vodId, source!, signal),
     enabled: Boolean(source && vodId && verified),
     staleTime: 5 * 60_000,
+    retry: searchParams.has(voiceRequestParam) ? false : undefined,
   });
+  useEffect(() => {
+    if (verified && (!source || detailQuery.isError || detailQuery.data?.episodes.length === 0)) {
+      tryNextVoiceSource();
+    }
+  }, [detailQuery.data, detailQuery.isError, source, tryNextVoiceSource, verified]);
 
   const episodes = useMemo(() => detailQuery.data?.episodes ?? [], [detailQuery.data]);
   const videoTitle = titleParam || detailQuery.data?.videoInfo?.title || '未知视频';
@@ -97,6 +114,7 @@ function WatchContent() {
       sp.set('index', String(index));
       sp.set('url', episodes[index] || directUrl);
       sp.delete('position');
+      sp.delete(voiceRequestParam);
       router.replace(`/watch?${sp.toString()}`, { scroll: false });
     },
     [router, searchParams, episodes, directUrl]
@@ -259,6 +277,7 @@ function WatchContent() {
                   onSelect={goEpisode}
                   onBack={() => router.push('/discover')}
                   onRequestSwitchSource={directPlayback ? undefined : () => setSwitchOpen(true)}
+                  onLoadFailure={tryNextVoiceSource}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">

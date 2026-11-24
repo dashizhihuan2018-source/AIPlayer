@@ -12,6 +12,7 @@ export type WatchPlayerProps = BrowserPlayerProps & {
   sourceLabel?: string;
   onSelect?: (index: number) => void;
   onBack?: () => void;
+  onLoadFailure?: () => boolean;
 };
 
 /** Ephemeral online identities do not contain credentials or machine paths. */
@@ -52,8 +53,10 @@ export function WatchPlayer(props: WatchPlayerProps) {
     getRestorePosition: props.getRestorePosition,
     onProgress: props.onTimeUpdate,
     onEnded: props.onEnded,
+    onLoadFailure: props.onLoadFailure,
+    onRequestSwitchSource: props.onRequestSwitchSource,
   }), [items, props.currentIndex, props.title, props.sourceLabel, props.autoSkipCredits, props.onSelect, props.onBack,
-    props.getRestorePosition, props.onTimeUpdate, props.onEnded]);
+    props.getRestorePosition, props.onTimeUpdate, props.onEnded, props.onLoadFailure, props.onRequestSwitchSource]);
 
   if (nativeHost) return <DesktopWorkspace externalPlayback={externalPlayback} />;
   return <div className="watch-browser-stage"><PlayerShell {...props} /></div>;

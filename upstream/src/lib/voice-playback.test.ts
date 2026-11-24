@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseDetail } from './cms-parser';
 import type { SearchResultItem, SourceConfig, VideoDetail } from './types';
-import { voicePlaybackRoute } from './voice-playback';
+import { beginVoicePlayback, nextVoicePlayback, voicePlaybackRoutes } from './voice-playback';
 
 const source: SourceConfig = { key: 'fixture', name: '测试源', url: 'https://catalog.example.org/api' };
 const item = (vodId: string, name: string, year = '2026'): SearchResultItem =>
@@ -13,7 +13,7 @@ const video = (title: string, labels: string[], remarks = '正片'): VideoDetail
   episodeLabels: labels,
 });
 const select = (items: SearchResultItem[], details: Record<string, VideoDetail>, selection = exact) =>
-  voicePlaybackRoute(selection, items, [source], async (id) => details[id], new AbortController().signal);
+  voicePlaybackRoutes(selection, items, [source], async (id) => details[id], new AbortController().signal).then((routes) => routes[0] ?? null);
 const query = (route: string | null) => new URL(route ?? '/', 'http://local.test').searchParams;
 
 describe('voice playback', () => {
@@ -38,6 +38,30 @@ describe('voice playback', () => {
     expect(await select([item('first', full), item('second', full, '2025')],
       { first: video(full, ['正片']), second: video(full, ['正片']) })).toBeNull();
     expect(await select([item('teaser', full)], { teaser: video(full, ['预告'], '预告') })).toBeNull();
+  });
+
+  it('tries the other verified source after a failed load and stops after exhausting the same episode', async () => {
+    const full = '星河守望剧场版 终局之战';
+    const backup = { ...source, key: 'backup', url: 'https://backup.example.org/api' };
+    const items = [{ ...item('backup', full), sourceKey: backup.key }, item('preferred', full)];
+    const routes = await voicePlaybackRoutes(exact, items, [source, backup],
+      async (id) => ({ ...video(full, ['正片']), episodes: ['https://media.example.org/' + id + '.m3u8'] }),
+      new AbortController().signal);
+
+    expect(routes.map((route) => query(route).get('source'))).toEqual([source.key, backup.key]);
+    const storage = new Map<string, string>();
+    const session = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value); },
+    };
+    const first = query(beginVoicePlayback(routes, session));
+    const second = nextVoicePlayback(first, session);
+    expect(query(second).get('id')).toBe('backup');
+    expect(query(second).get('index')).toBe('0');
+    expect(nextVoicePlayback(query(second), session)).toBeNull();
+
+    first.set('index', '1');
+    expect(nextVoicePlayback(first, session)).toBeNull();
   });
 
   it('keeps labels in step with the preferred playback line', () => {

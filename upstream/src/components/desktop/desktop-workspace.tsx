@@ -138,6 +138,8 @@ export interface ExternalPlayback {
   onProgress?: (time: number, duration: number) => void;
   onEnded?: () => void;
   onBack?: () => void;
+  onLoadFailure?: () => boolean;
+  onRequestSwitchSource?: (reason: string) => void;
   title?: string;
   sourceLabel?: string;
 }
@@ -177,6 +179,8 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
   const [historyOpen, setHistoryOpen] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [status, setStatus] = useState('');
+  const [externalFailure, setExternalFailure] = useState<{ key: string; message: string; switching: boolean } | null>(null);
+  const [externalRetry, setExternalRetry] = useState(0);
 
   // 状态提示（截屏成功、片头/片尾跳过、操作失败等）5 秒后自动隐藏，保持播放画面干净；
   // 提示条上的 × 仍可立即关闭。新提示覆盖旧提示时重新计时。
@@ -520,7 +524,8 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
   const externalUrl = externalPlayback ? currentItem?.url : undefined;
   const externalKey = externalId && externalUrl ? `${externalId}:${externalUrl}` : null;
   useEffect(() => {
-    if (!externalRef.current || !nativeReady || !externalUrl) return;
+    if (!externalRef.current || !nativeReady || !externalUrl || !externalKey) return;
+    setExternalFailure(null);
     resetTransport();
     loadedExternalRef.current = null;
     const token = { request: ++loadSequenceRef.current, generation: loadGenerationRef.current };
@@ -545,12 +550,14 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
       } catch (error) {
         if (!cancelled && isCurrentLoadRequest(token, activeLoadRef.current, loadGenerationRef.current)) {
           activeLoadRef.current = 0;
-          setStatus(userFacingError(error, '无法加载媒体'));
+          const switching = externalRef.current?.onLoadFailure?.() ?? false;
+          setExternalFailure({ key: externalKey, switching, message: switching ? '正在尝试其他片源…'
+            : userFacingError(error, '片源连接失败') });
         }
       }
     })();
     return () => { cancelled = true; loadedExternalRef.current = null; };
-  }, [acceptPlayerState, externalId, externalKey, externalUrl, nativeReady, resetTransport]);
+  }, [acceptPlayerState, externalKey, externalRetry, externalUrl, nativeReady, resetTransport]);
 
   useEffect(() => {
     if (!seeking && externalRef.current && nativeReady && loadedExternalRef.current === externalKey && externalKey && activeLoadRef.current === 0 && player.duration > 0) {
@@ -1180,7 +1187,14 @@ export function DesktopWorkspace({ externalPlayback }: { externalPlayback?: Exte
           <DesktopMediaTools capabilities={capabilities} hasMedia={Boolean(currentItem)} mediaTitle={currentItem?.name} recording={recording} exporting={player.exporting === true} gifCapturing={player.gifCapturing} gifExporting={player.gifExporting} gifElapsed={player.gifElapsed} gifSavedName={player.gifSavedName} gifError={player.gifError} gifThumbnail={player.gifThumbnail} playbackSpeed={preferredSpeed} onPlaybackSpeed={(value) => { setPreferredSpeed(value); void runCommand('speed', value); }} fullscreenActive={windowFullscreen} fullscreenTransitioning={fullscreenTransitioning} onFullscreen={toggleFullscreen} onStatus={setStatus} />
         </section>
 
-        {status && <div className="desk-notice" role="status"><span>!</span>{status}<button type="button" onClick={() => setStatus('')} aria-label="关闭提示">×</button></div>}
+        {externalFailure && externalFailure.key === externalKey && <div className="desk-notice" role="status">
+          <span>!</span>{externalFailure.message}
+          {!externalFailure.switching && <>
+            <button type="button" onClick={() => setExternalRetry((value) => value + 1)}>重试</button>
+            {externalPlayback?.onRequestSwitchSource && <button type="button" onClick={() => externalPlayback.onRequestSwitchSource?.(externalFailure.message)}>换源</button>}
+          </>}
+        </div>}
+        {status && !externalFailure && <div className="desk-notice" role="status"><span>!</span>{status}<button type="button" onClick={() => setStatus('')} aria-label="关闭提示">×</button></div>}
 
         <section className="transport" aria-label="播放控制">
           <div className="timeline-row"><input aria-label="播放进度" type="range" min="0" max={Math.max(duration, 1)} step="0.1" value={Math.min(player.time, Math.max(duration, 1))} disabled={!currentItem || !supportsCommand('seek')} onChange={(event) => void runCommand('seek', Number(event.target.value))} style={{ '--progress': `${duration ? Math.min(100, player.time / duration * 100) : 0}%` } as CSSProperties} /></div>
